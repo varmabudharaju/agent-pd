@@ -1,2 +1,0 @@
-[console_scripts]
-pd = agent_pd.cli:main
