@@ -7,6 +7,26 @@ RULES = load_rules(None)   # threshold 0.15
 def _rec(actions, brief):
     return AgentRecord(agent_id="a1", agent_type="Explore", brief=brief, cwd="/x", actions=actions)
 
+def test_bash_grep_offtask_flagged():
+    # agents often search via shell grep, not the Grep tool — off_task must see it.
+    rec = _rec([Action(agent_id="a1", tool_name="Bash",
+                       tool_input={"command": 'grep -r "kubernetes" /Users/varma/agent-pd'})],
+               brief="find the version string")
+    offs = off_task.detect(rec, RULES)
+    assert len(offs) == 1 and offs[0].offense == "off_task"
+
+def test_bash_grep_ontask_not_flagged():
+    rec = _rec([Action(agent_id="a1", tool_name="Bash",
+                       tool_input={"command": 'grep -r "version" pyproject.toml'})],
+               brief="find the version string")
+    assert off_task.detect(rec, RULES) == []
+
+def test_bash_non_search_command_ignored():
+    rec = _rec([Action(agent_id="a1", tool_name="Bash",
+                       tool_input={"command": "git commit -m done"})],
+               brief="find the version string")
+    assert off_task.detect(rec, RULES) == []
+
 def test_webfetch_uses_prompt_not_url():
     # On-task WebFetch: the URL path is opaque, but the fetch prompt overlaps the brief.
     rec = _rec([Action(agent_id="a1", tool_name="WebFetch",

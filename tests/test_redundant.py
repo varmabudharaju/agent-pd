@@ -15,6 +15,18 @@ def test_flags_exact_duplicate_once():
     assert offs[0].offense == "redundant"
     assert offs[0].severity == "low"
 
+def test_duplicate_bash_ignores_description_field():
+    # Same command, different agent-written description, must still count as a duplicate.
+    rec = _rec([
+        Action(agent_id="a1", tool_name="Bash",
+               tool_input={"command": "grep -r x .", "description": "first run"}),
+        Action(agent_id="a1", tool_name="Bash",
+               tool_input={"command": "grep -r x .", "description": "second run"}),
+    ])
+    offs = redundant.detect(rec, RULES)
+    assert len(offs) == 1
+    assert offs[0].offense == "redundant"
+
 def test_distinct_inputs_no_offense():
     rec = _rec([
         Action(agent_id="a1", tool_name="Grep", tool_input={"pattern": "foo"}),
