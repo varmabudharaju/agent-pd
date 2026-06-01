@@ -187,16 +187,26 @@ Example markdown shape:
 
 Python 3.11 (`python3` on this machine). Tests via `python3 -m pytest`.
 
-## Implementation-time verification (must confirm before coding the parser)
+## Confirmed on-disk reality (verified 2026-06-01)
 
-Research returned conflicting signals on the exact on-disk transcript filename and
-layout for subagents (`agent-<id>.jsonl` vs. per-session `<session-id>.jsonl` under
-`~/.claude/projects/<encoded-path>/`). **First implementation step:** run a real
-multi-subagent workflow, then inspect `~/.claude/projects/` and `~/.claude/pd/audit/`
-to confirm: (a) the actual subagent transcript filename/location, (b) the real hook
-JSON field names (`agent_id`, `agent_type`, `tool_input`, decision/reason for denials),
-and (c) that `PermissionDenied` fires and carries enough to identify the agent. Adjust
-the schemas above to match observed reality before writing detectors.
+Inspected actual files on this machine. Confirmed:
+
+- **Subagent transcripts** live at:
+  `~/.claude/projects/<encoded-cwd>/<session-id>/subagents/agent-<agentId>.jsonl`
+- Each transcript has a **sidecar** `agent-<agentId>.meta.json`:
+  ```json
+  { "agentType": "general-purpose", "description": "<the assigned task brief>" }
+  ```
+  → the assigned brief is given directly; no need to scrape the first user message.
+- **Transcript line** top-level keys include: `agentId`, `sessionId`, `cwd`,
+  `gitBranch`, `timestamp`, `type` (`"user"`/`"assistant"`), `uuid`, `parentUuid`,
+  `message`. `message.content` is the standard Anthropic block list with block
+  `type` ∈ {`text`, `thinking`, `tool_use`, `tool_result`}; `tool_use` blocks carry
+  `{ "name": "<Tool>", "input": { ... } }`.
+
+**Still to confirm during implementation (hook side only):** the exact `PermissionDenied`
+hook JSON field names and that it fires inside subagents carrying `agent_id`/`agent_type`.
+Task 1 captures a live sample to lock this before the detectors are written.
 
 ## Out of scope for v1 (explicit)
 
