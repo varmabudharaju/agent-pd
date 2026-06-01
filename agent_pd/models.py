@@ -1,0 +1,31 @@
+from dataclasses import dataclass, field
+
+
+@dataclass
+class Action:
+    agent_id: str
+    tool_name: str
+    tool_input: dict
+    ts: str | None = None
+    decision: str | None = None       # 'allow' | 'deny' | None
+    reason: str | None = None
+    source: str = "transcript"         # 'transcript' | 'audit'
+
+
+@dataclass
+class AgentRecord:
+    agent_id: str
+    agent_type: str
+    brief: str
+    cwd: str
+    actions: list = field(default_factory=list)   # list[Action]
+
+
+@dataclass
+class Offense:
+    agent_id: str
+    agent_type: str
+    offense: str
+    severity: str
+    confidence: str
+    evidence: str

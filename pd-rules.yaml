@@ -1,0 +1,18 @@
+# pd-rules.yaml — agent-pd rules. All keys optional; omitted keys use built-in defaults.
+scope_dirs: []                       # e.g. ["src/", "tests/"]; empty disables file-scope checks
+escalation_patterns:
+  - dangerouslyDisableSandbox
+  - "sudo "
+  - "chmod 777"
+  - "rm -rf /"
+severity:
+  permission_bypass: critical
+  out_of_scope: high
+  redundant: low
+  off_task: review
+detectors:
+  permission_bypass: true
+  out_of_scope: true
+  redundant: true
+  off_task: true
+off_task_overlap_threshold: 0.15
