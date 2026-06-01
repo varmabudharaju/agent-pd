@@ -5,6 +5,7 @@
 # (camelCase + snake_case fallbacks) since they are not yet confirmed against a live run.
 import json
 import sys
+from datetime import datetime
 from pathlib import Path
 
 DEFAULT_AUDIT_DIR = Path.home() / ".claude" / "pd" / "audit"
@@ -51,7 +52,10 @@ def main() -> int:
     try:
         raw = sys.stdin.read()
         payload = json.loads(raw) if raw.strip() else {}
-        write_event(build_event(payload))
+        event = build_event(payload)
+        if not event.get("ts"):   # payload timestamp is often absent; stamp arrival time
+            event["ts"] = datetime.now().isoformat(timespec="seconds")
+        write_event(event)
     except Exception:
         pass
     return 0

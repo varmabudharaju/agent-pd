@@ -42,6 +42,14 @@ def _cmd_install_hook(args) -> int:
     return 0
 
 
+def _cmd_watch(args) -> int:
+    from .live import watch
+    from .render import Style
+    style = Style(color=not args.no_color, emoji=not args.no_emoji)
+    return watch(session=args.session, crimes_only=args.crimes_only, style=style,
+                 audit_dir=args.audit_dir, projects_dir=args.projects_dir)
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="pd", description="Police department for Claude Code subagents")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -62,6 +70,15 @@ def build_parser() -> argparse.ArgumentParser:
     h = sub.add_parser("install-hook", help="register the patrol hook in settings.json")
     h.add_argument("--settings", default=str(Path.home() / ".claude" / "settings.json"))
     h.set_defaults(func=_cmd_install_hook)
+
+    w = sub.add_parser("watch", help="live 'police scanner' feed of agent activity")
+    w.add_argument("--session", default=None, help="session id (default: most recent)")
+    w.add_argument("--crimes-only", action="store_true", help="hide clean actions")
+    w.add_argument("--no-color", action="store_true", help="disable ANSI color")
+    w.add_argument("--no-emoji", action="store_true", help="disable emoji badges")
+    w.add_argument("--projects-dir", default=DEFAULT_PROJECTS_DIR)
+    w.add_argument("--audit-dir", default=DEFAULT_AUDIT_DIR)
+    w.set_defaults(func=_cmd_watch)
     return p
 
 
