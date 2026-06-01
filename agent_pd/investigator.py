@@ -100,9 +100,16 @@ def gather(session_id=None, projects_dir=DEFAULT_PROJECTS_DIR, audit_dir=DEFAULT
             agent_type, brief = load_meta(sub / f"agent-{agent_id}.meta.json")
             actions = parse_transcript(tpath)
             cwd = ""
-            if actions:
-                first = json.loads(tpath.read_text(encoding="utf-8").splitlines()[0])
-                cwd = first.get("cwd", "")
+            for raw in tpath.read_text(encoding="utf-8").splitlines():
+                if not raw.strip():
+                    continue
+                try:
+                    obj = json.loads(raw)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(obj, dict):
+                    cwd = obj.get("cwd", "")
+                    break
             actions += audit_actions.get(agent_id, [])
             records.append(AgentRecord(agent_id=agent_id, agent_type=agent_type,
                                        brief=brief, cwd=cwd, actions=actions))

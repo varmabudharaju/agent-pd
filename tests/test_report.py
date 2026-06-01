@@ -28,3 +28,10 @@ def test_render_markdown_groups_by_agent():
     assert "find foo" in md
     assert "redundant" in md
     assert "dup Grep" in md
+
+def test_render_markdown_escapes_pipes():
+    recs = [AgentRecord(agent_id="a1", agent_type="Explore", brief="b", cwd="/x")]
+    offs = [Offense("a1", "Explore", "permission_bypass", "critical", "high",
+                    "Bash: cat a | grep b")]
+    md = render_markdown(recs, offs)
+    assert "a \\| grep b" in md   # pipe escaped so the table isn't broken

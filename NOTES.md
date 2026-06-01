@@ -27,3 +27,8 @@ This requires an interactive Claude Code session with a real denial and **cannot
 ### Why this doesn't block progress
 
 `agent_pd/hook.py` (built in a later task) reads payload fields defensively using both camelCase and snake_case fallbacks. The exact field names refine the implementation but do not block it — the module will function correctly with either naming convention once the real payload is confirmed.
+
+## Deferred to v2
+
+- out_of_scope detector: tool-allowlist check (file-path scope is implemented in v1).
+- LLM-judge detectors (real off-task / pointless-loop), per the design spec.

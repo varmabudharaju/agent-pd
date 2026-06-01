@@ -3,6 +3,9 @@ import os
 from ..models import Offense
 
 OFFENSE = "out_of_scope"
+# v1 checks file-path scope only. The "tool not in declared allowlist" half of this
+# detector is deferred to v2: a subagent's tool allowlist is not present in meta.json
+# and would require reading .claude/agents/<type>.md frontmatter.
 FILE_TOOLS = {"Read", "Write", "Edit", "NotebookEdit"}
 
 

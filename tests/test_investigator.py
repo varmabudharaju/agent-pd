@@ -30,6 +30,39 @@ def test_load_meta(tmp_path):
     assert agent_type == "Explore"
     assert brief == "find foo"
 
+def test_gather_survives_malformed_first_line(tmp_path):
+    projects = tmp_path / "projects"
+    sub = projects / "-proj" / "s1" / "subagents"
+    sub.mkdir(parents=True)
+    # leading blank line + a valid tool_use line further down
+    body = "\n" + json.dumps({
+        "agentId": "a1", "cwd": "/proj", "type": "assistant",
+        "message": {"role": "assistant", "content": [
+            {"type": "tool_use", "name": "Grep", "input": {"pattern": "foo"}}]}}) + "\n"
+    (sub / "agent-a1.jsonl").write_text(body)
+    (sub / "agent-a1.meta.json").write_text(json.dumps(
+        {"agentType": "Explore", "description": "find foo"}))
+    audit = tmp_path / "audit"; audit.mkdir()
+    records = gather(session_id="s1", projects_dir=projects, audit_dir=audit)
+    assert len(records) == 1
+    assert records[0].cwd == "/proj"   # cwd recovered from the first PARSEABLE object line
+    assert any(a.tool_name == "Grep" for a in records[0].actions)
+
+
+def test_gather_includes_audit_only_agent(tmp_path):
+    # an agent that appears ONLY in the audit log (denied before any transcript entry)
+    projects = tmp_path / "projects"; projects.mkdir()
+    audit = tmp_path / "audit"; audit.mkdir()
+    (audit / "s1.jsonl").write_text(json.dumps({
+        "event": "PermissionDenied", "session_id": "s1", "agent_id": "ghost",
+        "tool_name": "Bash", "tool_input": {"command": "sudo x"},
+        "decision": "deny", "reason": "blocked"}) + "\n")
+    records = gather(session_id="s1", projects_dir=projects, audit_dir=audit)
+    assert len(records) == 1
+    assert records[0].agent_id == "ghost"
+    assert records[0].actions[0].decision == "deny"
+
+
 def test_gather_correlates_transcript_meta_and_audit(tmp_path):
     projects = tmp_path / "projects"
     sub = projects / "-proj" / "s1" / "subagents"

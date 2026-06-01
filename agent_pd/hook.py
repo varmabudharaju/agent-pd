@@ -1,7 +1,8 @@
 # agent_pd/hook.py
 # Patrol hook: logging-only. Reads one hook JSON object from stdin, appends a
 # normalized event to ~/.claude/pd/audit/<session_id>.jsonl, ALWAYS exits 0.
-# Confirmed transcript schema in spec; hook payload field names confirmed in Task 1.
+# Transcript schema confirmed in spec. Hook payload field names are read defensively
+# (camelCase + snake_case fallbacks) since they are not yet confirmed against a live run.
 import json
 import sys
 from pathlib import Path
