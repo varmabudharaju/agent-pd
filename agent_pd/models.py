@@ -29,3 +29,4 @@ class Offense:
     severity: str
     confidence: str
     evidence: str
+    subject: str | None = None   # the thing judged (e.g. an off_task search term)

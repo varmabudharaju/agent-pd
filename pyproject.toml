@@ -5,6 +5,10 @@ description = "A police department for Claude Code subagents"
 requires-python = ">=3.11"
 dependencies = ["PyYAML>=6.0"]
 
+# Optional: only needed for `pd judge` (the off_task LLM judge). Core stays zero-dep.
+[project.optional-dependencies]
+judge = ["anthropic>=0.40"]
+
 [project.scripts]
 pd = "agent_pd.cli:main"
 

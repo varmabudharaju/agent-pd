@@ -52,5 +52,29 @@ sheet. Zero extra dependencies — ANSI only.
 | redundant         | exact-duplicate tool calls                  | high       |
 | off_task          | low query/brief token overlap (heuristic)   | low/review |
 
-Configure via `pd-rules.yaml` (see the file for keys). Off-task is a low-confidence
-"for review" heuristic; a real LLM judge is planned for v2.
+Configure via `pd-rules.yaml` (see the file for keys). The deterministic detectors cost
+zero tokens. `off_task` is a low-confidence "for review" heuristic — to turn its noisy
+flags into trustworthy verdicts, use the opt-in judge below.
+
+## Optional: the off_task judge (`pd judge`)
+
+An opt-in LLM pass that reads each agent's brief and its flagged searches and reasons
+about relevance, turning low-confidence `off_task` flags into high-confidence verdicts
+(or dropping them as false positives). Designed to cost almost nothing:
+
+- **Opt-in** — never runs in the hook or `pd watch`.
+- **Pre-filtered + batched** — only the already-flagged `off_task` items, one API call
+  per agent.
+- **Dry-run by default** — `pd judge` just prints an estimate (items, agents, ≈tokens).
+  Add `--run` to actually call the API.
+- **Cheap by default** — `--model haiku` (default) / `sonnet` / `opus`; `--max N` caps it.
+
+```bash
+pip install -e ".[judge]"           # installs the optional anthropic SDK
+export ANTHROPIC_API_KEY=...
+pd judge                            # dry run: shows what it would cost
+pd judge --run                      # actually judge (Haiku); ~a fraction of a cent
+pd judge --run --model sonnet --max 20
+```
+
+With no API key or without the `[judge]` extra, `pd judge --run` degrades gracefully.

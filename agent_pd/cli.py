@@ -42,6 +42,38 @@ def _cmd_install_hook(args) -> int:
     return 0
 
 
+def _cmd_judge(args) -> int:
+    from . import judge as judge_mod
+    rules = load_rules(args.rules)
+    records = gather(session_id=args.session,
+                     projects_dir=args.projects_dir, audit_dir=args.audit_dir)
+    est = judge_mod.estimate(records, rules)
+    if est["items"] == 0:
+        print("No off_task items to judge for this session.")
+        return 0
+    if not args.run:
+        print(f"[dry run] would judge {est['items']} off_task item(s) across "
+              f"{est['agents']} agent(s) in {est['calls']} batched call(s) "
+              f"on model '{args.model}'.")
+        print(f"  estimated ~{est['approx_input_tokens']} input + "
+              f"~{est['approx_output_tokens']} output tokens.")
+        print("  re-run with --run to actually call the API.")
+        return 0
+    if not judge_mod.have_credentials():
+        print("Cannot run the judge: set ANTHROPIC_API_KEY and "
+              "`pip install -e \".[judge]\"` (anthropic SDK). Skipping.")
+        return 1
+    result = judge_mod.judge_records(records, rules, model=args.model, max_items=args.max)
+    confirmed, dropped = result["confirmed"], result["dropped"]
+    print(f"Judged {est['items']} flagged item(s): {len(confirmed)} confirmed off-task, "
+          f"{dropped} dropped as false positives "
+          f"(used ~{result['usage']['input_tokens']}in/"
+          f"{result['usage']['output_tokens']}out tokens).")
+    for o in confirmed:
+        print(f"  [{o.agent_type} {o.agent_id[:8]}] '{o.subject}' — {o.evidence}")
+    return 0
+
+
 def _cmd_watch(args) -> int:
     from .live import watch
     from .render import Style
@@ -81,6 +113,17 @@ def build_parser() -> argparse.ArgumentParser:
     w.add_argument("--projects-dir", default=DEFAULT_PROJECTS_DIR)
     w.add_argument("--audit-dir", default=DEFAULT_AUDIT_DIR)
     w.set_defaults(func=_cmd_watch)
+
+    j = sub.add_parser("judge", help="LLM-judge the off_task flags (opt-in, cost-capped)")
+    j.add_argument("--session", default=None)
+    j.add_argument("--run", action="store_true",
+                   help="actually call the API (default: dry-run estimate only)")
+    j.add_argument("--model", choices=["haiku", "sonnet", "opus"], default="haiku")
+    j.add_argument("--max", type=int, default=None, help="cap items judged")
+    j.add_argument("--rules", default=None)
+    j.add_argument("--projects-dir", default=DEFAULT_PROJECTS_DIR)
+    j.add_argument("--audit-dir", default=DEFAULT_AUDIT_DIR)
+    j.set_defaults(func=_cmd_judge)
     return p
 
 

@@ -104,5 +104,5 @@ def detect(record, rules) -> list:
             brief = record.brief if len(record.brief) <= 50 else record.brief[:49] + "…"
             out.append(Offense(record.agent_id, record.agent_type, OFFENSE, sev, "low",
                                f"searched '{term}' — {overlap:.0%} word-overlap with "
-                               f"brief '{brief}'"))
+                               f"brief '{brief}'", subject=q))
     return out
