@@ -38,9 +38,10 @@ and a live rap-sheet footer tallies crimes per agent.
  RAP SHEET   Explore·a93c: clean   ·   gp·a55d: 1🚨   ·   total 1 crimes / 2 acts
 ```
 
-Flags: `--crimes-only` (hide clean actions), `--no-color`, `--no-emoji` (plain
-terminals / SSH), `--session <id>` (default: most-recently-active session). Ctrl-C
-prints a final rap sheet. Zero extra dependencies — ANSI only.
+Flags: `--crimes-only` (hide clean actions), `-v`/`--verbose` (full commands + full
+offense reasons, no truncation), `--no-color`, `--no-emoji` (plain terminals / SSH),
+`--session <id>` (default: most-recently-active session). Ctrl-C prints a final rap
+sheet. Zero extra dependencies — ANSI only.
 
 ## Offenses (v1, deterministic)
 

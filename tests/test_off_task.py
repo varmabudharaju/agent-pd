@@ -27,6 +27,22 @@ def test_bash_non_search_command_ignored():
                brief="find the version string")
     assert off_task.detect(rec, RULES) == []
 
+def test_bash_grep_extracts_term_not_whole_command():
+    # The on-brief grep term must win even when paths/flags would dilute the overlap.
+    rec = _rec([Action(agent_id="a1", tool_name="Bash",
+                       tool_input={"command": 'grep -rn "\\.claude" /Users/varma/agent-pd/agent_pd/ --include=*.py'})],
+               brief="Find .claude filesystem access")
+    assert off_task.detect(rec, RULES) == []   # term ".claude" overlaps brief -> not off-task
+
+def test_off_task_evidence_names_term_and_brief():
+    rec = _rec([Action(agent_id="a1", tool_name="Bash",
+                       tool_input={"command": 'grep -r "kubernetes" .'})],
+               brief="find the version string")
+    offs = off_task.detect(rec, RULES)
+    assert len(offs) == 1
+    assert "kubernetes" in offs[0].evidence
+    assert "find the version string" in offs[0].evidence
+
 def test_webfetch_uses_prompt_not_url():
     # On-task WebFetch: the URL path is opaque, but the fetch prompt overlaps the brief.
     rec = _rec([Action(agent_id="a1", tool_name="WebFetch",

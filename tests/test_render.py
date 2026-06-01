@@ -89,6 +89,19 @@ def test_feed_line_worst_severity_on_main_line():
     assert len(lines) == 3             # main + 2 reason lines
 
 
+def test_feed_line_verbose_shows_full_command_and_reason():
+    long_ev = "reason " + "z" * 200
+    off = Offense("a", "gp", "off_task", "review", "low", long_ev)
+    cmd = "grep " + "y" * 200
+    normal = format_feed_line("12:00", "gp", "a", "Bash", {"command": cmd}, [off],
+                              Style(color=False, emoji=False))
+    verbose = format_feed_line("12:00", "gp", "a", "Bash", {"command": cmd}, [off],
+                               Style(color=False, emoji=False), verbose=True)
+    assert "…" in "\n".join(normal)              # truncated by default
+    assert long_ev in "\n".join(verbose)          # full reason shown when verbose
+    assert ("y" * 200) in verbose[0]              # full command shown when verbose
+
+
 def test_rap_sheet_aggregates():
     entries = [("gp·a55d", "31", {"critical": 1, "high": 1}),
                ("Explore·a93c", "32", {"review": 2})]

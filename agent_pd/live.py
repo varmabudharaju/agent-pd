@@ -137,8 +137,9 @@ def tail_events(audit_dir, session_id=None, poll_interval=0.5, _max_polls=None):
             time.sleep(poll_interval)
 
 
-def watch(session=None, crimes_only=False, style=None, audit_dir=DEFAULT_AUDIT_DIR,
-          projects_dir=DEFAULT_PROJECTS_DIR, rules=None, out=print, _events=None) -> int:
+def watch(session=None, crimes_only=False, verbose=False, style=None,
+          audit_dir=DEFAULT_AUDIT_DIR, projects_dir=DEFAULT_PROJECTS_DIR,
+          rules=None, out=print, _events=None) -> int:
     style = style if style is not None else Style()
     rules = rules if rules is not None else load_rules(None)
     mon = LiveMonitor(projects_dir=projects_dir, audit_dir=audit_dir)
@@ -154,7 +155,7 @@ def watch(session=None, crimes_only=False, style=None, audit_dir=DEFAULT_AUDIT_D
             if res.has_action:
                 for ln in format_feed_line(res.ts, res.agent_type, res.agent_id,
                                            res.tool_name, res.tool_input,
-                                           res.new_offenses, style, crimes_only):
+                                           res.new_offenses, style, crimes_only, verbose):
                     out(ln)
     except KeyboardInterrupt:
         pass

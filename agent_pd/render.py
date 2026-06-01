@@ -95,19 +95,20 @@ def _worst(offenses) -> str:
 
 
 def format_feed_line(ts, agent_type, agent_id, tool_name, tool_input, offenses,
-                     style: Style, crimes_only: bool = False) -> list:
+                     style: Style, crimes_only: bool = False, verbose: bool = False) -> list:
     if not offenses and crimes_only:
         return []
     tag = _painted_tag(agent_type, agent_id, style)
-    summary = action_summary(tool_name, tool_input)
+    summary = action_summary(tool_name, tool_input, limit=400 if verbose else 48)
     if offenses:
         verdict = badge(_worst(offenses), style)
     else:
         verdict = style.paint("✓" if style.emoji else "ok", "2;37")
-    main = f" {_fmt_ts(ts)}  {tag}  {tool_name:<8} {summary:<48}  {verdict}"
+    pad = "" if verbose else f"{'':<{max(0, 48 - len(summary))}}"
+    main = f" {_fmt_ts(ts)}  {tag}  {tool_name:<8} {summary}{pad}  {verdict}"
     lines = [main]
     for o in offenses:
-        reason = o.evidence if len(o.evidence) <= 90 else o.evidence[:89] + "…"
+        reason = o.evidence if (verbose or len(o.evidence) <= 90) else o.evidence[:89] + "…"
         lines.append(style.paint(f"          └ {reason}", "2;37"))
     return lines
 

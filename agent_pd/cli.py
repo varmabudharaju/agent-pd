@@ -46,8 +46,8 @@ def _cmd_watch(args) -> int:
     from .live import watch
     from .render import Style
     style = Style(color=not args.no_color, emoji=not args.no_emoji)
-    return watch(session=args.session, crimes_only=args.crimes_only, style=style,
-                 audit_dir=args.audit_dir, projects_dir=args.projects_dir)
+    return watch(session=args.session, crimes_only=args.crimes_only, verbose=args.verbose,
+                 style=style, audit_dir=args.audit_dir, projects_dir=args.projects_dir)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -74,6 +74,8 @@ def build_parser() -> argparse.ArgumentParser:
     w = sub.add_parser("watch", help="live 'police scanner' feed of agent activity")
     w.add_argument("--session", default=None, help="session id (default: most recent)")
     w.add_argument("--crimes-only", action="store_true", help="hide clean actions")
+    w.add_argument("-v", "--verbose", action="store_true",
+                   help="show full commands and full offense reasons (no truncation)")
     w.add_argument("--no-color", action="store_true", help="disable ANSI color")
     w.add_argument("--no-emoji", action="store_true", help="disable emoji badges")
     w.add_argument("--projects-dir", default=DEFAULT_PROJECTS_DIR)
