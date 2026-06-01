@@ -3,6 +3,11 @@ import json
 from ..models import Offense
 
 OFFENSE = "permission_bypass"
+# Escalation-pattern matching applies only to command-execution tools. Scanning the
+# full input of file tools (Write/Edit) false-positives on file *content* that merely
+# mentions a pattern — e.g. writing this detector's own escalation-pattern list.
+# Denied calls are still flagged for any tool (a denied Write is a bypass attempt).
+EXEC_TOOLS = {"Bash"}
 
 
 def _summ(tool_input: dict, limit: int = 120) -> str:
@@ -19,6 +24,8 @@ def detect(record, rules) -> list:
             reason = f": {a.reason}" if a.reason else ""
             out.append(Offense(record.agent_id, record.agent_type, OFFENSE, sev, "high",
                                f"{a.tool_name}: {_summ(a.tool_input)} (denied{reason})"))
+            continue
+        if a.tool_name not in EXEC_TOOLS:
             continue
         blob = json.dumps(a.tool_input).lower()
         for p in patterns:

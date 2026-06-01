@@ -27,3 +27,25 @@ def test_flags_escalation_pattern_in_input():
 def test_clean_action_no_offense():
     rec = _rec([Action(agent_id="a1", tool_name="Grep", tool_input={"pattern": "foo"})])
     assert permission_bypass.detect(rec, RULES) == []
+
+def test_write_content_mentioning_pattern_not_flagged():
+    # Writing a file whose CONTENT mentions an escalation word is not a bypass.
+    rec = _rec([Action(agent_id="a1", tool_name="Write",
+                       tool_input={"file_path": "x.py",
+                                   "content": "run sudo later; dangerouslyDisableSandbox"})])
+    assert permission_bypass.detect(rec, RULES) == []
+
+def test_bash_dangerous_sandbox_flag_flagged():
+    rec = _rec([Action(agent_id="a1", tool_name="Bash",
+                       tool_input={"command": "ls", "dangerouslyDisableSandbox": True})])
+    offs = permission_bypass.detect(rec, RULES)
+    assert len(offs) == 1
+    assert "dangerouslyDisableSandbox" in offs[0].evidence
+
+def test_denied_write_still_flagged():
+    # A denied call is a bypass attempt regardless of tool type.
+    rec = _rec([Action(agent_id="a1", tool_name="Write",
+                       tool_input={"file_path": "x"}, decision="deny", reason="blocked")])
+    offs = permission_bypass.detect(rec, RULES)
+    assert len(offs) == 1
+    assert "denied" in offs[0].evidence

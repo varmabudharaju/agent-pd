@@ -13,7 +13,10 @@ def _tokens(text: str) -> set:
 
 
 def _query_text(tool_input: dict) -> str:
-    for k in ("pattern", "query", "url", "prompt", "glob"):
+    # Prefer the human-meaningful query/prompt over the URL: a WebFetch URL path
+    # tokenizes into opaque slugs that rarely overlap the brief, so the fetch prompt
+    # is what reflects intent. URL is the last-resort fallback.
+    for k in ("pattern", "query", "prompt", "glob", "url"):
         if tool_input.get(k):
             return str(tool_input[k])
     return ""

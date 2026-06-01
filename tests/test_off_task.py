@@ -7,6 +7,14 @@ RULES = load_rules(None)   # threshold 0.15
 def _rec(actions, brief):
     return AgentRecord(agent_id="a1", agent_type="Explore", brief=brief, cwd="/x", actions=actions)
 
+def test_webfetch_uses_prompt_not_url():
+    # On-task WebFetch: the URL path is opaque, but the fetch prompt overlaps the brief.
+    rec = _rec([Action(agent_id="a1", tool_name="WebFetch",
+                       tool_input={"url": "https://example.com/x/y/z.md",
+                                   "prompt": "authentication login module details"})],
+               brief="refactor the authentication login module")
+    assert off_task.detect(rec, RULES) == []
+
 def test_flags_unrelated_search():
     rec = _rec([Action(agent_id="a1", tool_name="Grep",
                        tool_input={"pattern": "billing invoice tax"})],
