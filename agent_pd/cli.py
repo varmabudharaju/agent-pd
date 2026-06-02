@@ -51,19 +51,27 @@ def _cmd_judge(args) -> int:
     if est["items"] == 0:
         print("No off_task items to judge for this session.")
         return 0
+    backend = "claude-code" if args.via_claude_code else "api"
+    via = "the claude CLI (your subscription)" if args.via_claude_code else "the Anthropic API"
     if not args.run:
         print(f"[dry run] would judge {est['items']} off_task item(s) across "
               f"{est['agents']} agent(s) in {est['calls']} batched call(s) "
-              f"on model '{args.model}'.")
-        print(f"  estimated ~{est['approx_input_tokens']} input + "
-              f"~{est['approx_output_tokens']} output tokens.")
-        print("  re-run with --run to actually call the API.")
+              f"on model '{args.model}' via {via}.")
+        if not args.via_claude_code:
+            print(f"  estimated ~{est['approx_input_tokens']} input + "
+                  f"~{est['approx_output_tokens']} output tokens.")
+        print("  re-run with --run to actually judge.")
         return 0
-    if not judge_mod.have_credentials():
+    if args.via_claude_code:
+        if not judge_mod.have_claude_cli():
+            print("Cannot run the judge: the `claude` CLI was not found on PATH. Skipping.")
+            return 1
+    elif not judge_mod.have_credentials():
         print("Cannot run the judge: set ANTHROPIC_API_KEY and "
-              "`pip install -e \".[judge]\"` (anthropic SDK). Skipping.")
+              "`pip install -e \".[judge]\"` (anthropic SDK), or use --via-claude-code. Skipping.")
         return 1
-    result = judge_mod.judge_records(records, rules, model=args.model, max_items=args.max)
+    result = judge_mod.judge_records(records, rules, model=args.model,
+                                     max_items=args.max, backend=backend)
     confirmed, dropped = result["confirmed"], result["dropped"]
     print(f"Judged {est['items']} flagged item(s): {len(confirmed)} confirmed off-task, "
           f"{dropped} dropped as false positives "
@@ -117,7 +125,9 @@ def build_parser() -> argparse.ArgumentParser:
     j = sub.add_parser("judge", help="LLM-judge the off_task flags (opt-in, cost-capped)")
     j.add_argument("--session", default=None)
     j.add_argument("--run", action="store_true",
-                   help="actually call the API (default: dry-run estimate only)")
+                   help="actually judge (default: dry-run estimate only)")
+    j.add_argument("--via-claude-code", action="store_true",
+                   help="judge via the `claude` CLI on your subscription (no API key)")
     j.add_argument("--model", choices=["haiku", "sonnet", "opus"], default="haiku")
     j.add_argument("--max", type=int, default=None, help="cap items judged")
     j.add_argument("--rules", default=None)

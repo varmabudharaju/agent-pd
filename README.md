@@ -69,12 +69,21 @@ about relevance, turning low-confidence `off_task` flags into high-confidence ve
   Add `--run` to actually call the API.
 - **Cheap by default** — `--model haiku` (default) / `sonnet` / `opus`; `--max N` caps it.
 
+Two backends:
+
 ```bash
-pip install -e ".[judge]"           # installs the optional anthropic SDK
+# A) Via your Claude subscription — no API key, uses the `claude` CLI:
+pd judge                            # dry run
+pd judge --run --via-claude-code    # judge on your subscription
+
+# B) Via the metered Anthropic API (needs a key):
+pip install -e ".[judge]"           # optional anthropic SDK
 export ANTHROPIC_API_KEY=...
-pd judge                            # dry run: shows what it would cost
-pd judge --run                      # actually judge (Haiku); ~a fraction of a cent
+pd judge --run                      # ~a fraction of a cent on Haiku
 pd judge --run --model sonnet --max 20
 ```
 
-With no API key or without the `[judge]` extra, `pd judge --run` degrades gracefully.
+`--via-claude-code` shells out to the headless `claude` CLI, so it's billed to your
+Claude subscription (the same auth Claude Code uses) rather than the pay-per-token API.
+With neither a `claude` CLI nor API credentials available, `pd judge --run` degrades
+gracefully.

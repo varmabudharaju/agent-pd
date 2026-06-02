@@ -33,8 +33,10 @@ def test_judge_dry_run_with_offtask(tmp_path, capsys):
 
 
 def test_judge_subcommand_parses():
-    args = build_parser().parse_args(["judge", "--run", "--model", "opus", "--max", "5"])
+    args = build_parser().parse_args(
+        ["judge", "--run", "--via-claude-code", "--model", "opus", "--max", "5"])
     assert args.run is True and args.model == "opus" and args.max == 5
+    assert args.via_claude_code is True
 
 
 def test_watch_subcommand_parses():

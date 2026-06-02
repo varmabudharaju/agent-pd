@@ -76,3 +76,28 @@ def test_judge_respects_max_items():
 def test_model_alias_resolves():
     assert judge.MODEL_ALIASES["haiku"] == "claude-haiku-4-5"
     assert judge.MODEL_ALIASES["opus"] == "claude-opus-4-8"
+
+
+def test_extract_verdicts_from_prose_and_fences():
+    fenced = 'Here you go:\n```json\n{"verdicts": [{"index": 0, "off_task": true, "reason": "x"}]}\n```\ndone'
+    obj = judge._extract_verdicts(fenced)
+    assert obj["verdicts"][0]["off_task"] is True
+    assert judge._extract_verdicts("no json here") == {"verdicts": []}
+
+
+def test_judge_via_injected_call_backend():
+    # backend path uses an injected `call` (mirrors the claude-code subprocess shape)
+    rec = _rec("find the version string",
+               ['grep -r "kubernetes" .', 'grep -r "tensorflow" .'])
+    calls = {"n": 0}
+
+    def fake_call(system, user):
+        calls["n"] += 1
+        return {"verdicts": [
+            {"index": 0, "off_task": True, "reason": "unrelated"},
+            {"index": 1, "off_task": False, "reason": "related"},
+        ]}, None
+
+    result = judge.judge_records([rec], RULES, call=fake_call)
+    assert calls["n"] == 1
+    assert len(result["confirmed"]) == 1 and result["dropped"] == 1
