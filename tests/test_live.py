@@ -1,5 +1,5 @@
 import json
-from agent_pd.live import LiveMonitor, tail_events, watch
+from agent_pd.live import LiveMonitor, tail_events, tail_all_events, watch
 from agent_pd.config import load_rules
 from agent_pd.render import Style
 
@@ -69,6 +69,29 @@ def test_tail_events_reads_appended_lines_tolerates_junk(tmp_path):
         + '{"partial": ')                                            # partial: not yielded
     evs = list(tail_events(audit, session_id="s1", poll_interval=0, _max_polls=1))
     assert [e["agent_id"] for e in evs] == ["a1", "a2"]
+
+
+def test_tail_all_events_merges_sessions(tmp_path):
+    audit = tmp_path / "audit"
+    audit.mkdir()
+    (audit / "s1.jsonl").write_text(
+        json.dumps({"event": "PostToolUse", "session_id": "s1", "agent_id": "a1"}) + "\n")
+    (audit / "s2.jsonl").write_text(
+        json.dumps({"event": "PostToolUse", "session_id": "s2", "agent_id": "b2"}) + "\n")
+    evs = list(tail_all_events(audit, poll_interval=0, _max_polls=1))
+    sids = {e["session_id"] for e in evs}
+    assert sids == {"s1", "s2"}              # both sessions merged into one stream
+
+
+def test_watch_all_tags_lines_with_session(tmp_path):
+    out_lines = []
+    evs = [_ev("a1", "Bash", {"command": "sudo rm"}, session="abc1234def")]
+    watch(all_sessions=True, style=Style(color=False, emoji=False),
+          projects_dir=tmp_path / "p", audit_dir=tmp_path / "a", rules=RULES,
+          out=out_lines.append, _events=iter(evs))
+    blob = "\n".join(out_lines)
+    assert "ALL sessions" in blob          # header
+    assert "§abc1234" in blob              # session marker on banner/feed line
 
 
 def test_watch_emits_banner_crime_and_rap_sheet(tmp_path):

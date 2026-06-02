@@ -144,25 +144,67 @@ def tail_events(audit_dir, session_id=None, poll_interval=0.5, _max_polls=None):
             time.sleep(poll_interval)
 
 
-def watch(session=None, crimes_only=False, verbose=False, style=None,
+def tail_all_events(audit_dir, poll_interval=0.5, _max_polls=None):
+    """Follow EVERY session audit file in the dir at once, merging appended events into
+    one stream. New session files are picked up automatically. Each event carries its
+    own session_id/agent_id, so a single LiveMonitor handles the merged feed."""
+    audit_dir = Path(audit_dir)
+    offsets, bufs, polls = {}, {}, 0
+    while True:
+        if audit_dir.exists():
+            for path in sorted(audit_dir.glob("*.jsonl")):
+                key = str(path)
+                try:
+                    with open(path, "r", encoding="utf-8") as f:
+                        f.seek(offsets.get(key, 0))
+                        chunk = f.read()
+                        offsets[key] = f.tell()
+                except OSError:
+                    continue
+                buf = bufs.get(key, "") + chunk
+                while "\n" in buf:
+                    line, buf = buf.split("\n", 1)
+                    line = line.strip()
+                    if line:
+                        try:
+                            yield json.loads(line)
+                        except json.JSONDecodeError:
+                            continue
+                bufs[key] = buf
+        polls += 1
+        if _max_polls is not None and polls >= _max_polls:
+            return
+        if poll_interval:
+            time.sleep(poll_interval)
+
+
+def watch(session=None, crimes_only=False, verbose=False, all_sessions=False, style=None,
           audit_dir=DEFAULT_AUDIT_DIR, projects_dir=DEFAULT_PROJECTS_DIR,
           rules=None, out=print, _events=None) -> int:
     style = style if style is not None else Style()
     rules = rules if rules is not None else load_rules(None)
     mon = LiveMonitor(projects_dir=projects_dir, audit_dir=audit_dir)
 
-    out(f" agent-pd · watching session {session or '(most recent)'}    [Ctrl-C to stop]")
+    where = "ALL sessions" if all_sessions else f"session {session or '(most recent)'}"
+    out(f" agent-pd · watching {where}    [Ctrl-C to stop]")
     out("─" * 80)
-    events = _events if _events is not None else tail_events(audit_dir, session)
+    if _events is not None:
+        events = _events
+    elif all_sessions:
+        events = tail_all_events(audit_dir)
+    else:
+        events = tail_events(audit_dir, session)
     try:
         for ev in events:
             res = mon.process(ev, rules)
+            sess = ev.get("session_id") if all_sessions else None
             if res.new_agent:
-                out(format_banner(res.agent_type, res.agent_id, res.brief, style))
+                out(format_banner(res.agent_type, res.agent_id, res.brief, style, session=sess))
             if res.has_action:
                 for ln in format_feed_line(res.ts, res.agent_type, res.agent_id,
                                            res.tool_name, res.tool_input,
-                                           res.new_offenses, style, crimes_only, verbose):
+                                           res.new_offenses, style, crimes_only, verbose,
+                                           session=sess):
                     out(ln)
     except KeyboardInterrupt:
         pass

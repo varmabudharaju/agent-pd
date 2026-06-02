@@ -40,10 +40,11 @@ def test_judge_subcommand_parses():
 
 
 def test_watch_subcommand_parses():
-    args = build_parser().parse_args(["watch", "--crimes-only", "-v", "--no-color", "--no-emoji"])
+    args = build_parser().parse_args(
+        ["watch", "--all", "--crimes-only", "-v", "--no-color", "--no-emoji"])
     assert args.func is _cmd_watch
     assert args.crimes_only is True
-    assert args.verbose is True
+    assert args.verbose is True and args.all_sessions is True
     assert args.no_color is True and args.no_emoji is True
     assert args.session is None
 

@@ -71,10 +71,12 @@ def _painted_tag(agent_type: str, agent_id: str, style: Style) -> str:
     return style.paint(agent_tag(agent_type, agent_id), agent_color(agent_id))
 
 
-def format_banner(agent_type: str, agent_id: str, brief: str, style: Style) -> str:
+def format_banner(agent_type: str, agent_id: str, brief: str, style: Style,
+                  session: str = None) -> str:
     arrow = "▸" if style.emoji else ">"
     tag = _painted_tag(agent_type, agent_id, style)
-    lines = [f"┌ {arrow} {tag}  started"]
+    sess = f"{style.paint('§' + session[:7], '2;37')} " if session else ""
+    lines = [f"┌ {arrow} {sess}{tag}  started"]
     if brief:
         lines.append(f'│   brief: "{brief}"')
     lines.append("└─")
@@ -95,17 +97,19 @@ def _worst(offenses) -> str:
 
 
 def format_feed_line(ts, agent_type, agent_id, tool_name, tool_input, offenses,
-                     style: Style, crimes_only: bool = False, verbose: bool = False) -> list:
+                     style: Style, crimes_only: bool = False, verbose: bool = False,
+                     session: str = None) -> list:
     if not offenses and crimes_only:
         return []
     tag = _painted_tag(agent_type, agent_id, style)
+    sess = f"{style.paint('§' + session[:7], '2;37')} " if session else ""
     summary = action_summary(tool_name, tool_input, limit=400 if verbose else 48)
     if offenses:
         verdict = badge(_worst(offenses), style)
     else:
         verdict = style.paint("✓" if style.emoji else "ok", "2;37")
     pad = "" if verbose else f"{'':<{max(0, 48 - len(summary))}}"
-    main = f" {_fmt_ts(ts)}  {tag}  {tool_name:<8} {summary}{pad}  {verdict}"
+    main = f" {_fmt_ts(ts)}  {sess}{tag}  {tool_name:<8} {summary}{pad}  {verdict}"
     lines = [main]
     for o in offenses:
         reason = o.evidence if (verbose or len(o.evidence) <= 90) else o.evidence[:89] + "…"
