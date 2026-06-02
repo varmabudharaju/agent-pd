@@ -52,7 +52,8 @@ def build_prompt(brief, subjects) -> tuple:
     for i, s in enumerate(subjects):
         lines.append(f"{i}. {s}")
     lines.append("")
-    lines.append("Return a verdict (off_task true/false + reason) for each numbered search.")
+    lines.append('Return ONLY this JSON, one entry per numbered search: '
+                 '{"verdicts":[{"index":<n>,"off_task":<true|false>,"reason":"<short>"}]}')
     return RUBRIC, "\n".join(lines)
 
 
@@ -178,7 +179,11 @@ def judge_records(records, rules, model=DEFAULT_MODEL, client=None, max_items=No
         if u is not None:
             usage["input_tokens"] += getattr(u, "input_tokens", 0) or 0
             usage["output_tokens"] += getattr(u, "output_tokens", 0) or 0
-        verdicts = {v["index"]: v for v in data.get("verdicts", [])}
+        verdicts = {}
+        for v in data.get("verdicts", []):
+            idx = v.get("index", v.get("id"))   # tolerate either key name
+            if idx is not None:
+                verdicts[idx] = v
         for i, o in enumerate(offs):
             v = verdicts.get(i)
             if v and v.get("off_task"):

@@ -85,6 +85,14 @@ def test_extract_verdicts_from_prose_and_fences():
     assert judge._extract_verdicts("no json here") == {"verdicts": []}
 
 
+def test_judge_tolerates_id_key_from_free_form_json():
+    # the claude-CLI path returns free-form JSON that may use "id" instead of "index"
+    rec = _rec("find the version string", ['grep -r "kubernetes" .'])
+    client = _FakeClient({"verdicts": [{"id": 0, "off_task": True, "reason": "unrelated"}]})
+    result = judge.judge_records([rec], RULES, client=client)
+    assert len(result["confirmed"]) == 1
+
+
 def test_judge_via_injected_call_backend():
     # backend path uses an injected `call` (mirrors the claude-code subprocess shape)
     rec = _rec("find the version string",

@@ -73,10 +73,11 @@ def _cmd_judge(args) -> int:
     result = judge_mod.judge_records(records, rules, model=args.model,
                                      max_items=args.max, backend=backend)
     confirmed, dropped = result["confirmed"], result["dropped"]
+    cost = (" (on your Claude subscription)" if args.via_claude_code
+            else f" (~{result['usage']['input_tokens']}in/"
+                 f"{result['usage']['output_tokens']}out tokens)")
     print(f"Judged {est['items']} flagged item(s): {len(confirmed)} confirmed off-task, "
-          f"{dropped} dropped as false positives "
-          f"(used ~{result['usage']['input_tokens']}in/"
-          f"{result['usage']['output_tokens']}out tokens).")
+          f"{dropped} dropped as false positives{cost}.")
     for o in confirmed:
         print(f"  [{o.agent_type} {o.agent_id[:8]}] '{o.subject}' — {o.evidence}")
     return 0
