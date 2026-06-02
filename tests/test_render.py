@@ -102,10 +102,23 @@ def test_feed_line_verbose_shows_full_command_and_reason():
     assert ("y" * 200) in verbose[0]              # full command shown when verbose
 
 
-def test_rap_sheet_aggregates():
-    entries = [("gp·a55d", "31", {"critical": 1, "high": 1}),
-               ("Explore·a93c", "32", {"review": 2})]
-    out = format_rap_sheet(entries, total_acts=12, style=Style(color=False, emoji=False))
+def test_rap_sheet_shows_crimes_acts_and_tools():
+    entries = [
+        {"tag": "gp·a55d", "color": "31", "crimes": {"critical": 1, "high": 1},
+         "acts": 9, "tools": {"Bash": 5, "Grep": 4}},
+        {"tag": "Explore·a93c", "color": "32", "crimes": {},
+         "acts": 14, "tools": {"Grep": 14}},
+    ]
+    out = format_rap_sheet(entries, total_acts=23, style=Style(color=False, emoji=False))
     assert "gp·a55d" in out and "Explore·a93c" in out
-    assert "12" in out                 # total actions
-    assert "4" in out                  # total crimes (1+1+2)
+    assert "23 acts" in out            # session total in header
+    assert "2 crimes" in out           # total crimes (1 critical + 1 high)
+    assert "Grep×14" in out            # per-agent activity is shown even when clean
+    assert "clean" in out              # the no-crime agent is labeled
+
+
+def test_rap_sheet_clean_agent_still_shows_activity():
+    entries = [{"tag": "workflow-subagent·a85f", "color": "36", "crimes": {},
+                "acts": 14, "tools": {"Grep": 6, "Read": 5, "Bash": 3}}]
+    out = format_rap_sheet(entries, total_acts=14, style=Style(color=False, emoji=False))
+    assert "14 acts" in out and "Grep×6" in out and "Read×5" in out

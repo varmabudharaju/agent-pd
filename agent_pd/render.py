@@ -114,20 +114,26 @@ def format_feed_line(ts, agent_type, agent_id, tool_name, tool_input, offenses,
 
 
 def format_rap_sheet(entries: list, total_acts: int, style: Style) -> str:
-    """entries: list of (tag_str, color_code, counts_dict[severity->n])."""
-    total_crimes = sum(sum(counts.values()) for _, _, counts in entries)
-    parts = []
-    for tag, color, counts in entries:
-        bits = []
-        for sev in ("critical", "high", "low", "review"):
-            n = counts.get(sev, 0)
-            if not n:
-                continue
-            _, emoji, _ = SEVERITY_STYLE[sev]
-            mark = emoji if style.emoji else sev
-            bits.append(f"{n}{mark}")
-        summary = " ".join(bits) if bits else "clean"
-        parts.append(f"{style.paint(tag, color)}: {summary}")
-    body = "   ·   ".join(parts)
+    """One line per agent: tag · N acts · top tools · crimes (or 'clean'). entries are
+    dicts: {tag, color, crimes:{sev:n}, acts:int, tools:{name:n}}."""
+    total_crimes = sum(sum(e["crimes"].values()) for e in entries)
     head = style.paint("RAP SHEET", "1")
-    return f" {head}   {body}   ·   total {total_crimes} crimes / {total_acts} acts"
+    lines = [f" {head} — {len(entries)} agents · {total_crimes} crimes / {total_acts} acts"]
+    # worst offenders first, then busiest
+    ordered = sorted(entries, key=lambda e: (-sum(e["crimes"].values()), -e["acts"]))
+    for e in ordered:
+        tag = style.paint(e["tag"], e["color"])
+        if sum(e["crimes"].values()):
+            bits = []
+            for sev in ("critical", "high", "low", "review"):
+                n = e["crimes"].get(sev, 0)
+                if n:
+                    _, emoji, _ = SEVERITY_STYLE[sev]
+                    bits.append(f"{n}{emoji}" if style.emoji else f"{n} {sev}")
+            verdict = " ".join(bits)
+        else:
+            verdict = style.paint("clean", "2;37")
+        top = sorted(e["tools"].items(), key=lambda kv: (-kv[1], kv[0]))[:3]
+        tools = " ".join(f"{name}×{c}" for name, c in top) or "—"
+        lines.append(f"   {tag}  {e['acts']:>3} acts  {tools:<34}  {verdict}")
+    return "\n".join(lines)

@@ -91,9 +91,16 @@ class LiveMonitor:
                              True, tool, action.tool_input, action.ts, new)
 
     def rap_sheet(self, style) -> str:
-        entries = [(agent_tag(rec.agent_type, aid), agent_color(aid),
-                    dict(self.tallies.get(aid, {})))
-                   for aid, rec in self.records.items()]
+        entries = []
+        for aid, rec in self.records.items():
+            tools = Counter(a.tool_name for a in rec.actions if a.tool_name)
+            entries.append({
+                "tag": agent_tag(rec.agent_type, aid),
+                "color": agent_color(aid),
+                "crimes": dict(self.tallies.get(aid, {})),
+                "acts": len(rec.actions),
+                "tools": dict(tools),
+            })
         return format_rap_sheet(entries, self.total_acts, style)
 
 
@@ -160,5 +167,9 @@ def watch(session=None, crimes_only=False, verbose=False, style=None,
     except KeyboardInterrupt:
         pass
     out("─" * 80)
+    total_crimes = sum(sum(c.values()) for c in mon.tallies.values())
+    if crimes_only and total_crimes == 0 and mon.total_acts:
+        out(" no crimes — here's what each agent did instead "
+            "(drop --crimes-only to see the live action feed):")
     out(mon.rap_sheet(style))
     return 0
