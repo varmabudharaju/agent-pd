@@ -20,6 +20,14 @@ def test_action_summary_per_tool():
     assert action_summary("WebSearch", {"query": "q terms"}) == "q terms"
 
 
+def test_action_summary_readable_fallback_for_other_tools():
+    # tools without a dedicated formatter still show a clean field, not raw JSON
+    assert action_summary("ToolSearch", {"query": "select:Grep", "max_results": 5}) == "select:Grep"
+    assert action_summary("Task", {"description": "do a thing", "x": 1}) == "do a thing"
+    # truly opaque input still falls back to JSON rather than blank
+    assert action_summary("Mystery", {"a": 1}).startswith("{")
+
+
 def test_action_summary_truncates_and_strips_newlines():
     s = action_summary("Bash", {"command": "echo " + "x" * 200}, limit=20)
     assert len(s) <= 20

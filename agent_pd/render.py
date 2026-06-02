@@ -43,7 +43,16 @@ def action_summary(tool_name: str, tool_input: dict, limit: int = 48) -> str:
     elif tool_name == "WebSearch":
         s = str(ti.get("query", ""))
     else:
-        s = json.dumps(ti, sort_keys=True)
+        # readable fallback for any other tool: prefer a human-meaningful field
+        s = ""
+        for k in ("query", "prompt", "description", "subject", "title",
+                  "command", "url", "file_path", "content"):
+            v = ti.get(k)
+            if isinstance(v, str) and v.strip():
+                s = v
+                break
+        if not s:
+            s = json.dumps(ti, sort_keys=True)
     s = s.replace("\n", " ").replace("\r", " ")
     return s if len(s) <= limit else s[: limit - 1] + "…"
 
