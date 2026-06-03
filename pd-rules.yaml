@@ -30,10 +30,14 @@ severity:
   out_of_scope_sensitive: critical
   redundant: low
   off_task: review
+  self_permission: critical
+  tool_not_allowed: high
   permitted: info        # downgrade target when an access matches a permission allow-rule
 detectors:
   permission_bypass: true
   out_of_scope: true
   redundant: true
   off_task: true
+  self_permission: true
+  tool_not_allowed: true
 off_task_overlap_threshold: 0.15

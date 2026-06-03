@@ -25,14 +25,24 @@ Legend: 🐞 confirmed bug · ⚠️ heuristic/limitation · 📋 backlog/v2 · 
 
 ---
 
-## 🐞 Confirmed issues, deferred
+## ✅ Shipped on `feat/known-gaps`
 
-- **Judge API backend (`_call_model`) is unverified at runtime.** No test exercises the
-  real Anthropic call (tests inject a fake `call`). The `output_config={"format":{"type":
-  "json_schema",...}}` shape looks correct per docs but is unproven against a live key,
-  and `pyproject` pins `anthropic>=0.40`, which likely predates structured-output support.
-  *Fix later:* bump the floor pin, add one live-call smoke test (gated on a key), and wrap
-  the call so a bad-param failure degrades like the no-credentials path already does.
+- **Judge backend error isolation.** `judge_records` now isolates per-agent backend
+  failures into a new `errored` count instead of crashing the batch; the CLI reports it.
+  A bad call degrades per-agent rather than taking down the whole pass.
+- **`off_task` flag-value mis-extraction** — `_extract_search_term` now skips grep/find
+  flag *values* (e.g. `rg -t py "foo"` extracts `foo`, not `py`).
+- **`redundant` Read re-reads** — `redundant` now ignores `Read` re-reads (re-reading a
+  file after editing it no longer counts as a duplicate).
+- **Bash `extract_paths` env-prefix / pipe handling** — `scope.extract_paths` now skips
+  env-assignment prefixes (`FOO=bar cat /x`) and handles pipe segments, so the real
+  path-bearing command past a `|` is scanned.
+- **NEW detectors** (now exist; see HANDOFF detector table):
+  - `self_permission` (critical) — flags a `Write`/`Edit`/`Bash` that writes a permission
+    key into a `.claude/settings*.json` file (an agent widening its own permissions).
+  - `tool_not_allowed` (high) — flags a subagent using a tool outside its declared
+    `tools:` allowlist (read from `.claude/agents/<type>.md` frontmatter, carried on
+    `AgentRecord.tool_allowlist`).
 
 ## ⚠️ Heuristic limits / by-design
 
@@ -40,12 +50,13 @@ Legend: 🐞 confirmed bug · ⚠️ heuristic/limitation · 📋 backlog/v2 · 
   (`cat ../x`, `ls /etc`, `cd ..`, `find /`) but will miss paths built via shell variables,
   `$(...)`, or command substitution, and can occasionally over-flag. Deterministic
   file-tool checks remain exact. Specific edge cases surfaced during review:
-  - **Tokens after a pipe** aren't given path-command treatment: `echo x | cat secrets`
-    — the `cat` past the `|` isn't recognized as a path-bearing command.
-  - **Env-assignment prefix** makes the assignment look like the binary: `FOO=bar cat /x`
-    treats `FOO=bar` as the command, so the real `cat /x` isn't scanned.
   - **`$VAR`-prefixed paths aren't expanded** by `classify`/`resolve` (only `~`/`~user`
     are), so a `$VAR` that points at a sensitive path can slip past.
+  - **Operator split happens on the RAW string before shlex.** `scope.extract_paths`
+    splits compound commands by regex on the raw command string before tokenizing, so a
+    `|`/`;`/`&` *inside a quoted argument* can mis-segment the command. Rare, and the
+    mangled fragment almost always resolves inside the project so it seldom produces a
+    false offense. A more robust fix would shlex-tokenize once and split on operator tokens.
   - **`~/.config` is broad for `critical`** and may be noisy (it holds lots of innocuous
     app config) — consider narrowing it in tuning.
 - **Permission-aware severity (permissions.py) matches leniently.** When an allow-rule
@@ -63,12 +74,6 @@ Legend: 🐞 confirmed bug · ⚠️ heuristic/limitation · 📋 backlog/v2 · 
   have (`meta.json`). The main interactive session has no brief, so off-task detection
   doesn't apply there. A main-agent off-task signal would need a different anchor (e.g. the
   user's last prompt) — not in scope.
-- **`off_task` flag-value mis-extraction.** `_extract_search_term` returns the first
-  non-dash token, so `rg -t py "foo"` extracts `py` (the value of `-t`) instead of `foo`.
-  Adds noise to an already-noisy heuristic; inflates judge item count/cost.
-- **`redundant` flags legitimate re-reads.** Re-reading a file after editing it counts as a
-  duplicate. Severity is `low`, so tolerable, but `Read` re-reads probably shouldn't weigh
-  the same as a duplicated `Grep`/`Bash`.
 - **Sessions predating the hook (transcript-only) drop out of `pd report`.** With the audit
   log as the single source, a session with no `<id>.jsonl` won't appear. Acceptable — the
   hook records everything going forward.
@@ -79,12 +84,8 @@ Legend: 🐞 confirmed bug · ⚠️ heuristic/limitation · 📋 backlog/v2 · 
 
 - **Capture tool results/outcomes in the hook** (exit code, output size) → feed shows what
   each action *did*, not just what it attempted. Watch audit-log growth.
-- **`out_of_scope` tool-allowlist half** — flag a subagent using a tool outside its declared
-  `tools:` allowlist (needs reading `.claude/agents/<type>.md` frontmatter).
 - **Verdict disk cache for the judge** — skip re-judging identical (brief, search) pairs.
 - **`pd summary <session>`** — per-agent digest (files touched, time span, tool histogram).
-- **Self-permissioning detection** — flag edits to `~/.claude/settings.json` that widen
-  permissions (partly covered once `~/.claude` is on the sensitive list).
 - **Other hook events** — `PostToolUseFailure`, `PreCompact`, etc. are not captured; could
   enrich the timeline.
 
