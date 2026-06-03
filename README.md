@@ -21,6 +21,10 @@ pd report --session <id> --format md
 pd watch                 # live "police scanner" feed of agent activity + crimes
 ```
 
+`pd report` replays the session audit log through the same engine `pd watch` uses, so it
+covers **both** the main agent (shown as `main`) and its subagents from one source.
+Denied calls (`PermissionDenied`) are captured and flagged critical.
+
 ## Live view: `pd watch`
 
 A real-time feed of what your agents are doing and which rules they're breaking, as it
@@ -53,7 +57,7 @@ them; `pd list` enumerates every recorded session.
 | Offense           | Detection                                   | Confidence |
 |-------------------|---------------------------------------------|------------|
 | permission_bypass | denied calls + escalation patterns          | high       |
-| out_of_scope      | file path outside `scope_dirs`              | high       |
+| out_of_scope      | file OR Bash path outside the project (auto), sensitive paths always (critical), or outside `scope_dirs` | high |
 | redundant         | exact-duplicate tool calls                  | high       |
 | off_task          | low query/brief token overlap (heuristic)   | low/review |
 

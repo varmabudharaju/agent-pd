@@ -19,11 +19,13 @@ def find_subagents_dir(projects_dir: Path, session_id: str):
 
 
 def _latest_session(projects_dir: Path, audit_dir: Path):
-    candidates = []
-    if Path(audit_dir).exists():
-        candidates += [(p.stat().st_mtime, p.stem) for p in Path(audit_dir).glob("*.jsonl")]
-    for sub in Path(projects_dir).glob("*/*/subagents"):
-        candidates.append((sub.stat().st_mtime, sub.parent.name))
+    # Audit files are the only source gather() can read, so candidates must be
+    # audit files only — picking a session by a subagents-dir mtime could select
+    # a session with no audit file -> silently empty report. (projects_dir kept
+    # for the caller's signature; unused here.)
+    if not Path(audit_dir).exists():
+        return None
+    candidates = [(p.stat().st_mtime, p.stem) for p in Path(audit_dir).glob("*.jsonl")]
     if not candidates:
         return None
     return max(candidates)[1]
