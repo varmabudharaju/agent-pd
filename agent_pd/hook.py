@@ -19,7 +19,7 @@ def _first(payload, *keys, default=None):
 
 
 def build_event(payload: dict) -> dict:
-    return {
+    event = {
         "ts": _first(payload, "timestamp", "ts"),
         "event": _first(payload, "hook_event_name", "event", default="unknown"),
         "session_id": _first(payload, "session_id", "sessionId", default=""),
@@ -28,10 +28,15 @@ def build_event(payload: dict) -> dict:
         "tool_name": _first(payload, "tool_name", "toolName", default=""),
         "tool_input": _first(payload, "tool_input", "toolInput", default={}),
         "decision": _first(payload, "permissionDecision", "decision",
-                            "permission_decision"),
+                           "permission_decision"),
         "reason": _first(payload, "reason", "permissionDecisionReason"),
         "cwd": _first(payload, "cwd", default=""),
     }
+    # The real PermissionDenied payload has no decision field — the event firing IS
+    # the denial. Infer it (explicit fields above still win if ever present).
+    if event["event"] == "PermissionDenied" and event["decision"] is None:
+        event["decision"] = "deny"
+    return event
 
 
 def audit_path(session_id: str, audit_dir: Path = DEFAULT_AUDIT_DIR) -> Path:

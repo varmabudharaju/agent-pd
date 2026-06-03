@@ -14,16 +14,24 @@ def test_build_event_normalizes_fields():
     assert ev["tool_name"] == "Bash"
     assert ev["decision"] is None
 
-def test_build_event_camelcase_and_denial():
+def test_build_event_infers_denial_from_event_name():
+    # Realistic PermissionDenied payload: NO permissionDecision/decision field.
     payload = {
         "hook_event_name": "PermissionDenied",
         "agentId": "a2", "agentType": "general-purpose",
         "tool_name": "Bash", "tool_input": {"command": "sudo rm -rf /"},
         "sessionId": "s1",
-        "permissionDecision": "deny", "reason": "blocked by rule",
     }
     ev = build_event(payload)
     assert ev["agent_id"] == "a2"
+    assert ev["event"] == "PermissionDenied"
+    assert ev["decision"] == "deny"   # inferred from the event name
+
+
+def test_build_event_honors_explicit_decision():
+    payload = {"hook_event_name": "PermissionDenied", "session_id": "s1",
+               "permissionDecision": "deny", "reason": "blocked by rule"}
+    ev = build_event(payload)
     assert ev["decision"] == "deny"
     assert ev["reason"] == "blocked by rule"
 
