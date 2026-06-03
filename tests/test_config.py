@@ -17,3 +17,18 @@ def test_user_file_overrides_defaults(tmp_path):
     # unspecified keys keep defaults
     assert r.detectors["permission_bypass"] is True
     assert r.severity["off_task"] == "review"
+
+def test_scope_defaults_present():
+    r = load_rules(None)
+    assert r.project_boundary is True
+    assert "~/.ssh" in r.sensitive_patterns
+    assert "*.pem" in r.sensitive_patterns
+    assert r.severity["out_of_scope"] == "high"
+    assert r.severity["out_of_scope_sensitive"] == "critical"
+
+def test_scope_overrides(tmp_path):
+    p = tmp_path / "pd-rules.yaml"
+    p.write_text("project_boundary: false\nsensitive_patterns:\n  - secret.txt\n")
+    r = load_rules(p)
+    assert r.project_boundary is False
+    assert r.sensitive_patterns == ["secret.txt"]
