@@ -7,7 +7,7 @@ dependencies = ["PyYAML>=6.0"]
 
 # Optional: only needed for `pd judge` (the off_task LLM judge). Core stays zero-dep.
 [project.optional-dependencies]
-judge = ["anthropic>=0.40"]
+judge = ["anthropic>=0.45"]   # structured-output `output_config`; judge_records also guards the call
 
 [project.scripts]
 pd = "agent_pd.cli:main"

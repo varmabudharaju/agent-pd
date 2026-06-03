@@ -161,7 +161,7 @@ def judge_records(records, rules, model=DEFAULT_MODEL, client=None, max_items=No
             if client is None:
                 client = _default_client()
             call = lambda s, u: _call_model(client, model_id, s, u)   # noqa: E731
-    confirmed, dropped = [], 0
+    confirmed, dropped, errored = [], 0, 0
     usage = {"input_tokens": 0, "output_tokens": 0}
     remaining = max_items
     for rec in records:
@@ -175,7 +175,11 @@ def judge_records(records, rules, model=DEFAULT_MODEL, client=None, max_items=No
             remaining -= len(offs)
         subjects = [o.subject or o.evidence for o in offs]
         system, user = build_prompt(rec.brief, subjects)
-        data, u = call(system, user)
+        try:
+            data, u = call(system, user)
+        except Exception:
+            errored += len(offs)        # isolate: this agent's batch failed, keep going
+            continue
         if u is not None:
             usage["input_tokens"] += getattr(u, "input_tokens", 0) or 0
             usage["output_tokens"] += getattr(u, "output_tokens", 0) or 0
@@ -192,4 +196,4 @@ def judge_records(records, rules, model=DEFAULT_MODEL, client=None, max_items=No
                     f"judged off-task: {v.get('reason', '').strip()}", subject=o.subject))
             else:
                 dropped += 1
-    return {"confirmed": confirmed, "dropped": dropped, "usage": usage}
+    return {"confirmed": confirmed, "dropped": dropped, "errored": errored, "usage": usage}

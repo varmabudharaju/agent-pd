@@ -109,3 +109,26 @@ def test_judge_via_injected_call_backend():
     result = judge.judge_records([rec], RULES, call=fake_call)
     assert calls["n"] == 1
     assert len(result["confirmed"]) == 1 and result["dropped"] == 1
+
+
+def test_judge_isolates_backend_errors():
+    from agent_pd.models import Action, AgentRecord
+    from agent_pd.config import load_rules
+    from agent_pd import judge as judge_mod
+    rules = load_rules(None)
+    recs = [
+        AgentRecord(agent_id="a1", agent_type="x", brief="fix the parser", cwd="/p",
+                    actions=[Action(agent_id="a1", tool_name="Grep", tool_input={"pattern": "kubernetes"})]),
+        AgentRecord(agent_id="a2", agent_type="x", brief="fix the parser", cwd="/p",
+                    actions=[Action(agent_id="a2", tool_name="Grep", tool_input={"pattern": "billing"})]),
+    ]
+    calls = {"n": 0}
+    def flaky_call(system, user):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("backend boom")
+        return {"verdicts": [{"index": 0, "off_task": True, "reason": "unrelated"}]}, None
+    result = judge_mod.judge_records(recs, rules, call=flaky_call)
+    assert result["errored"] == 1
+    assert len(result["confirmed"]) == 1
+    assert "errored" in result
