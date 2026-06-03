@@ -65,6 +65,13 @@ Configure via `pd-rules.yaml` (see the file for keys). The deterministic detecto
 zero tokens. `off_task` is a low-confidence "for review" heuristic — to turn its noisy
 flags into trustworthy verdicts, use the opt-in judge below.
 
+**Permission-aware severity.** `out_of_scope` and escalation hits are downgraded to a
+quiet `info` severity when the action matches a permission **allow-rule** you configured
+(Claude Code's `permissions.allow` in `~/.claude/settings.json` or the project
+`.claude/settings.local.json`) — *authorized → info, unauthorized → full severity*. `info`
+is not counted as a crime and stays quiet under `pd watch --crimes-only`. A denied call
+(`permission_bypass`) stays critical regardless — a denial is unpermitted by definition.
+
 ## Optional: the off_task judge (`pd judge`)
 
 An opt-in LLM pass that reads each agent's brief and its flagged searches and reasons

@@ -30,6 +30,7 @@ severity:
   out_of_scope_sensitive: critical
   redundant: low
   off_task: review
+  permitted: info        # downgrade target when an access matches a permission allow-rule
 detectors:
   permission_bypass: true
   out_of_scope: true
