@@ -61,6 +61,12 @@ def test_extract_paths():
 
 
 def test_extract_paths_env_prefix_and_pipes():
+    # absolute paths (caught either way)
     assert scope.extract_paths("FOO=bar cat /x") == ["/x"]
     assert scope.extract_paths("echo x | cat /secret") == ["/secret"]
     assert scope.extract_paths("A=1 B=2 sudo cat /root/.bashrc") == ["/root/.bashrc"]
+    # discriminating: RELATIVE positional of a path-command after env-prefix / pipe.
+    # The old single-command heuristic missed these (env-var treated as the binary; the
+    # second pipe segment never inspected).
+    assert scope.extract_paths("FOO=bar cat data.txt") == ["data.txt"]
+    assert scope.extract_paths("echo x | cat secret") == ["secret"]
