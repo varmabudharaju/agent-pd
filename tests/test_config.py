@@ -32,3 +32,11 @@ def test_scope_overrides(tmp_path):
     r = load_rules(p)
     assert r.project_boundary is False
     assert r.sensitive_patterns == ["secret.txt"]
+
+def test_pdrules_sensitive_matches_defaults():
+    import yaml
+    from pathlib import Path
+    from agent_pd.config import DEFAULT_SENSITIVE
+    repo_rules = Path(__file__).resolve().parent.parent / "pd-rules.yaml"
+    data = yaml.safe_load(repo_rules.read_text())
+    assert data["sensitive_patterns"] == DEFAULT_SENSITIVE

@@ -72,18 +72,21 @@ def test_gather_no_double_count(tmp_path):
     assert sum(1 for a in rec.actions if a.tool_name == "Grep") == 1
 
 
-def test_latest_session_picks_newest_audit(tmp_path):
+def test_latest_session_picks_newest_audit_only(tmp_path):
     import os
-    projects = tmp_path / "projects"; projects.mkdir()
+    from agent_pd.investigator import _latest_session
+    projects = tmp_path / "projects"
+    # a subagents-dir session with NO audit file, made the newest mtime of all
+    stale = projects / "-proj" / "ghost" / "subagents"
+    stale.mkdir(parents=True)
     audit = tmp_path / "audit"; audit.mkdir()
     (audit / "old.jsonl").write_text("{}\n")
     (audit / "new.jsonl").write_text("{}\n")
-    # make 'new' clearly newer
     os.utime(audit / "old.jsonl", (1, 1))
-    # gather(session_id=None) should resolve to the newest audit session and read it
-    recs = gather(session_id=None, projects_dir=projects, audit_dir=audit)
-    # both files are essentially empty ({} has no tool_name) -> no records, but no crash
-    assert recs == [] or isinstance(recs, list)
+    os.utime(audit / "new.jsonl", (100, 100))
+    os.utime(stale, (1000, 1000))            # newest mtime overall
+    # must pick the newest AUDIT file, never the subagents-only 'ghost'
+    assert _latest_session(projects, audit) == "new"
 
 
 def test_gather_tolerates_malformed_and_missing(tmp_path):
