@@ -6,7 +6,7 @@ tool/permission event; a CLI audits those logs and reports rule offenses with ev
 
 - **Repo:** https://github.com/varmabudharaju/agent-pd (branch `master`)
 - **Local:** `/Users/varma/agent-pd` · Python 3.11 (use `python3`) · CLI: `pd`
-- **State at handoff:** 102 tests passing, working tree clean, all pushed.
+- **State at handoff:** 120 tests passing, working tree clean, all pushed.
 - **Author policy:** all commits under `varma <sairam.vzf33@gmail.com>` — **no Co-Authored-By / no Claude or Anthropic attribution** in commits or PRs.
 
 ---
@@ -41,6 +41,14 @@ tool/permission event; a CLI audits those logs and reports rule offenses with ev
 
 The three deterministic detectors are trustworthy and free. `off_task` is a noisy
 heuristic — the **judge** (below) turns it into high-confidence verdicts.
+
+**Permission-aware severity.** `out_of_scope` and escalation hits are downgraded to a quiet
+`info` severity when the action matches a permission **allow-rule** the user configured
+(`permissions.allow` in `~/.claude/settings.json` / project `.claude/settings.local.json`)
+— authorized → info, unauthorized → full severity. `info` is not counted as a crime and is
+hidden under `pd watch --crimes-only`. A denied call stays critical regardless. Allow-rules
+are carried on each `AgentRecord` (loaded by `LiveMonitor` from the agent's cwd); detectors
+never read settings files directly. See `agent_pd/permissions.py`.
 
 ## The off_task judge (`pd judge`) — opt-in, cost-capped
 
@@ -92,7 +100,7 @@ agent_pd/
   models.py         # Action, AgentRecord, Offense dataclasses
   install_hook.py   # idempotent settings.json hook registration
   cli.py            # argparse: report/list/install-hook/watch/judge
-tests/              # 102 tests, pure (no API key needed — judge uses injected fake clients)
+tests/              # 120 tests, pure (no API key needed — judge uses injected fake clients)
 pd-rules.yaml       # user-editable rules
 docs/superpowers/   # specs + the original implementation plan
 ```
@@ -103,7 +111,7 @@ docs/superpowers/   # specs + the original implementation plan
 cd ~/agent-pd
 pip install --user -e .          # core (zero runtime deps but PyYAML)
 pip install --user -e ".[judge]" # + anthropic SDK (only for the API judge backend)
-python3 -m pytest -q             # 102 tests
+python3 -m pytest -q             # 120 tests
 ```
 
 TDD throughout; detectors/render/live/judge are all unit-tested with no network.
