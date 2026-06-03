@@ -77,3 +77,10 @@ def test_empty_brief_skips():
     rec = _rec([Action(agent_id="a1", tool_name="Grep", tool_input={"pattern": "anything"})],
                brief="")
     assert off_task.detect(rec, RULES) == []
+
+def test_extract_search_term_skips_flag_values():
+    from agent_pd.detectors.off_task import _extract_search_term
+    assert _extract_search_term('rg -t py "foo"') == "foo"
+    assert _extract_search_term("grep -e bar baz") == "bar"
+    assert _extract_search_term("grep foo .") == "foo"
+    assert _extract_search_term("grep -rn foo /path") == "foo"

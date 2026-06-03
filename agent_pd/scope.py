@@ -2,6 +2,7 @@
 git-root walk in project_root(). Fully unit-testable."""
 import fnmatch
 import os
+import re
 import shlex
 
 # Bash commands whose first positional argument is a path even when it doesn't
@@ -11,6 +12,8 @@ PATH_COMMANDS = {"cat", "ls", "cd", "cp", "mv", "less", "more", "head", "tail",
                  "touch", "nano", "vim", "vi", "source"}
 _URL_PREFIXES = ("http://", "https://", "ftp://")
 _SHELL_OPS = {"|", "&&", "||", ";", "&", ">", ">>", "<", "2>", "2>>"}
+_SEG_RE = re.compile(r"\|\||&&|\||;")          # split compound commands into segments
+_ENV_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 
 
 def project_root(cwd: str) -> str:
@@ -65,20 +68,28 @@ def classify(abspath: str, root: str, scope_dirs: list, sensitive_patterns: list
     return (None, None)
 
 
-def extract_paths(command: str) -> list:
-    """Heuristically pull filesystem paths out of a Bash command. Conservative:
-    a token is a path only if it looks like one (starts with / ~ ./ ..) or is the
-    first positional argument of a known path-command. Flags, pipes, URLs ignored."""
+def _strip_env(toks: list) -> list:
+    i = 0
+    while i < len(toks) and _ENV_RE.match(toks[i]):
+        i += 1
+    return toks[i:]
+
+
+def _extract_one(command: str) -> list:
     try:
         toks = shlex.split(command)
     except ValueError:
         toks = command.split()
+    toks = _strip_env(toks)
     if not toks:
         return []
-    i = 1 if toks[0].rsplit("/", 1)[-1] == "sudo" and len(toks) > 1 else 0
-    binary = toks[i].rsplit("/", 1)[-1] if i < len(toks) else ""
+    if toks[0].rsplit("/", 1)[-1] == "sudo" and len(toks) > 1:   # drop a sudo prefix
+        toks = _strip_env(toks[1:])
+    if not toks:
+        return []
+    binary = toks[0].rsplit("/", 1)[-1]
     out, seen_positional = [], False
-    for t in toks[i + 1:]:
+    for t in toks[1:]:
         if not t or t.startswith("-") or t in _SHELL_OPS:
             continue
         if t.startswith(_URL_PREFIXES):
@@ -88,4 +99,18 @@ def extract_paths(command: str) -> list:
         seen_positional = True
         if looks or (binary in PATH_COMMANDS and first_positional):
             out.append(t)
+    return out
+
+
+def extract_paths(command: str) -> list:
+    """Heuristically pull filesystem paths out of a Bash command. Handles env-var
+    prefixes (`FOO=bar cat /x`), a leading sudo, and compound commands (splits on
+    `| || && ;` and inspects each segment). Conservative per-segment: a token is a path
+    only if it looks like one or is the first positional of a known path-command."""
+    out, seen = [], set()
+    for seg in _SEG_RE.split(command or ""):
+        for p in _extract_one(seg):
+            if p not in seen:
+                seen.add(p)
+                out.append(p)
     return out

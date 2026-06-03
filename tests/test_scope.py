@@ -58,3 +58,9 @@ def test_extract_paths():
     assert scope.extract_paths("curl https://x.com/a") == []
     assert scope.extract_paths("echo hi > /etc/cfg") == ["/etc/cfg"]
     assert scope.extract_paths("sudo cat /root/.bashrc") == ["/root/.bashrc"]
+
+
+def test_extract_paths_env_prefix_and_pipes():
+    assert scope.extract_paths("FOO=bar cat /x") == ["/x"]
+    assert scope.extract_paths("echo x | cat /secret") == ["/secret"]
+    assert scope.extract_paths("A=1 B=2 sudo cat /root/.bashrc") == ["/root/.bashrc"]
