@@ -6,7 +6,7 @@ tool/permission event; a CLI audits those logs and reports rule offenses with ev
 
 - **Repo:** https://github.com/varmabudharaju/agent-pd (branch `master`)
 - **Local:** `/Users/varma/agent-pd` · Python 3.11 (use `python3`) · CLI: `pd`
-- **State at handoff:** 141 tests passing, working tree clean, all pushed.
+- **State at handoff:** 155 tests passing, working tree clean, all pushed.
 - **Author policy:** all commits under `varma <sairam.vzf33@gmail.com>` — **no Co-Authored-By / no Claude or Anthropic attribution** in commits or PRs.
 
 ---
@@ -79,6 +79,8 @@ pd watch --session <id> --no-color --no-emoji
 
 pd report                            # offense report, most recent session
 pd report --session <id> --format md # md | json | both
+pd report --verbose                  # full evidence + files-touched per agent
+pd report --agent <id|main>          # focus one agent: digest + every action it took
 
 pd judge                             # dry run (free) — shows the estimate
 pd judge --run --via-claude-code     # judge on your subscription
@@ -94,7 +96,8 @@ agent_pd/
   detectors/
     __init__.py     # DETECTORS registry + run_detectors()
     permission_bypass.py  out_of_scope.py  redundant.py  off_task.py
-  report.py         # render_json / render_markdown
+  report.py         # render_json / render_markdown; names the main agent + renders the per-agent digest; supports --verbose (full evidence + files) and --agent <id|main> (focus one agent: digest + chronological actions)
+  summary.py        # pure label/digest helpers (agent label, one-line digest, files-touched)
   render.py         # live feed formatting: Style, badges, banner, feed line, rap sheet (pure)
   live.py           # LiveMonitor (state) + tail_events / tail_all_events + watch()
   judge.py          # opt-in off_task LLM judge (api + claude-code backends)
@@ -102,7 +105,7 @@ agent_pd/
   models.py         # Action, AgentRecord, Offense dataclasses
   install_hook.py   # idempotent settings.json hook registration
   cli.py            # argparse: report/list/install-hook/watch/judge
-tests/              # 141 tests, pure (no API key needed — judge uses injected fake clients)
+tests/              # 155 tests, pure (no API key needed — judge uses injected fake clients)
 pd-rules.yaml       # user-editable rules
 docs/superpowers/   # specs + the original implementation plan
 ```
@@ -113,7 +116,7 @@ docs/superpowers/   # specs + the original implementation plan
 cd ~/agent-pd
 pip install --user -e .          # core (zero runtime deps but PyYAML)
 pip install --user -e ".[judge]" # + anthropic SDK (only for the API judge backend)
-python3 -m pytest -q             # 141 tests
+python3 -m pytest -q             # 155 tests
 ```
 
 TDD throughout; detectors/render/live/judge are all unit-tested with no network.

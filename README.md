@@ -18,12 +18,16 @@ pd install-hook          # registers the logging hook in ~/.claude/settings.json
 pd list                  # list sessions with recorded activity
 pd report                # report offenses for the most recent session
 pd report --session <id> --format md
+pd report --verbose            # full evidence + files-touched per agent
+pd report --agent <id|main>    # focus one agent: digest + every action it took
 pd watch                 # live "police scanner" feed of agent activity + crimes
 ```
 
 `pd report` replays the session audit log through the same engine `pd watch` uses, so it
 covers **both** the main agent (shown as `main`) and its subagents from one source.
-Denied calls (`PermissionDenied`) are captured and flagged critical.
+Denied calls (`PermissionDenied`) are captured and flagged critical. Each agent header
+shows a one-line digest (acts · time span · top tools · crime badges), and the main agent
+is named by its project and session — clean agents are summarized too.
 
 ## Live view: `pd watch`
 
