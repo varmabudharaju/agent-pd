@@ -8,6 +8,7 @@ OFFENSE = "permission_bypass"
 # mentions a pattern — e.g. writing this detector's own escalation-pattern list.
 # Denied calls are still flagged for any tool (a denied Write is a bypass attempt).
 EXEC_TOOLS = {"Bash"}
+_NOISE_KEYS = {"description"}  # free-text field; not part of the action — see redundant.py
 
 
 def _summ(tool_input: dict, limit: int = 120) -> str:
@@ -27,9 +28,10 @@ def detect(record, rules) -> list:
             continue
         if a.tool_name not in EXEC_TOOLS:
             continue
-        cmd = str((a.tool_input or {}).get("command", "")).lower()
+        meaningful = {k: v for k, v in (a.tool_input or {}).items() if k not in _NOISE_KEYS}
+        blob = json.dumps(meaningful).lower()
         for p in patterns:
-            if p.lower() in cmd:
+            if p.lower() in blob:
                 out.append(Offense(record.agent_id, record.agent_type, OFFENSE, sev, "high",
                                    f"{a.tool_name}: matched escalation pattern "
                                    f"'{p}' in {_summ(a.tool_input)}"))
