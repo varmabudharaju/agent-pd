@@ -5,7 +5,7 @@ from ..models import Offense
 
 OFFENSE = "self_permission"
 _SETTINGS_NAMES = ("settings.json", "settings.local.json")
-_PERM_KEYS = ("permissions", "allow", "defaultmode",
+_PERM_KEYS = ("permissions", '"allow"', "defaultmode",
               "dangerouslyskippermissions", "bypasspermissions")
 # tool -> the field holding the new text written to the file
 _NEW_TEXT = {"Write": "content", "Edit": "new_string", "NotebookEdit": "new_source"}
@@ -13,8 +13,9 @@ _NEW_TEXT = {"Write": "content", "Edit": "new_string", "NotebookEdit": "new_sour
 
 def _is_settings_path(path: str) -> bool:
     p = (path or "").replace("\\", "/")
-    base = p.rsplit("/", 1)[-1]
-    return ".claude" in p and base in _SETTINGS_NAMES
+    parts = p.split("/")
+    base = parts[-1] if parts else ""
+    return ".claude" in parts and base in _SETTINGS_NAMES
 
 
 def _perm_key_in(text: str):

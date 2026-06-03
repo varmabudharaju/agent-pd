@@ -42,3 +42,19 @@ def test_bash_redirect_into_settings_flagged():
     offs = self_permission.detect(rec, rules)
     assert len(offs) == 1
     assert offs[0].severity == "critical"
+
+
+def test_claude_backup_dir_not_flagged():
+    rules = load_rules(None)
+    rec = _rec([Action(agent_id="a1", tool_name="Write",
+                       tool_input={"file_path": "/proj/.claude-backup/settings.json",
+                                   "content": '{"permissions": {"allow": []}}'})])
+    assert self_permission.detect(rec, rules) == []
+
+
+def test_prose_allow_word_not_flagged():
+    rules = load_rules(None)
+    rec = _rec([Action(agent_id="a1", tool_name="Write",
+                       tool_input={"file_path": "/Users/x/.claude/settings.json",
+                                   "content": "the statusline will allow longer text"})])
+    assert self_permission.detect(rec, rules) == []
