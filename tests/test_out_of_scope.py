@@ -3,26 +3,75 @@ from agent_pd.models import Action, AgentRecord
 from agent_pd.config import load_rules
 from agent_pd.detectors import out_of_scope
 
+
 def _rec(actions, cwd="/proj"):
     return AgentRecord(agent_id="a1", agent_type="Explore", brief="b", cwd=cwd, actions=actions)
 
-def test_disabled_when_no_scope_dirs():
-    rules = load_rules(None)  # scope_dirs == []
+
+def test_flags_file_outside_project_by_default():
+    rules = load_rules(None)  # scope_dirs == [], project_boundary True
     rec = _rec([Action(agent_id="a1", tool_name="Write",
                        tool_input={"file_path": "/etc/passwd"})])
+    offs = out_of_scope.detect(rec, rules)
+    assert len(offs) == 1
+    assert offs[0].offense == "out_of_scope"
+    assert offs[0].severity == "high"
+    assert "outside project" in offs[0].evidence
+
+
+def test_allows_file_inside_project():
+    rules = load_rules(None)
+    rec = _rec([Action(agent_id="a1", tool_name="Edit",
+                       tool_input={"file_path": "/proj/src/app.py"})])
     assert out_of_scope.detect(rec, rules) == []
 
-def test_flags_path_outside_scope():
+
+def test_sensitive_flagged_even_inside_project():
+    rules = load_rules(None)
+    rec = _rec([Action(agent_id="a1", tool_name="Read",
+                       tool_input={"file_path": "/proj/.env"})])
+    offs = out_of_scope.detect(rec, rules)
+    assert len(offs) == 1
+    assert offs[0].severity == "critical"
+    assert "sensitive" in offs[0].evidence
+
+
+def test_allowlist_narrows_within_project():
     rules = replace(load_rules(None), scope_dirs=["src/"])
     rec = _rec([Action(agent_id="a1", tool_name="Write",
                        tool_input={"file_path": "/proj/secrets/key.txt"})])
     offs = out_of_scope.detect(rec, rules)
     assert len(offs) == 1
-    assert offs[0].offense == "out_of_scope"
     assert "secrets/key.txt" in offs[0].evidence
 
-def test_allows_path_inside_scope():
-    rules = replace(load_rules(None), scope_dirs=["src/"])
-    rec = _rec([Action(agent_id="a1", tool_name="Edit",
-                       tool_input={"file_path": "/proj/src/app.py"})])
+
+def test_bash_navigation_outside_project():
+    rules = load_rules(None)
+    rec = _rec([Action(agent_id="a1", tool_name="Bash",
+                       tool_input={"command": "cat /etc/hosts"})])
+    offs = out_of_scope.detect(rec, rules)
+    assert len(offs) == 1
+    assert "outside project" in offs[0].evidence
+
+
+def test_bash_inside_project_clean():
+    rules = load_rules(None)
+    rec = _rec([Action(agent_id="a1", tool_name="Bash",
+                       tool_input={"command": "ls src"})])
+    assert out_of_scope.detect(rec, rules) == []
+
+
+def test_dedup_same_path_once():
+    rules = load_rules(None)
+    rec = _rec([
+        Action(agent_id="a1", tool_name="Bash", tool_input={"command": "cat /etc/hosts"}),
+        Action(agent_id="a1", tool_name="Bash", tool_input={"command": "cat /etc/hosts"}),
+    ])
+    assert len(out_of_scope.detect(rec, rules)) == 1
+
+
+def test_detector_can_be_disabled_via_boundary_and_empty_allowlist():
+    rules = replace(load_rules(None), project_boundary=False, scope_dirs=[], sensitive_patterns=[])
+    rec = _rec([Action(agent_id="a1", tool_name="Write",
+                       tool_input={"file_path": "/etc/passwd"})])
     assert out_of_scope.detect(rec, rules) == []
