@@ -14,6 +14,10 @@ def test_agent_record_allow_rules_default():
     rec = AgentRecord(agent_id="a1", agent_type="Explore", brief="b", cwd="/x")
     assert rec.allow_rules == []
 
+def test_agent_record_tool_allowlist_default():
+    rec = AgentRecord(agent_id="a1", agent_type="Explore", brief="b", cwd="/x")
+    assert rec.tool_allowlist is None
+
 def test_offense_fields():
     o = Offense(agent_id="a1", agent_type="Explore", offense="redundant",
                 severity="low", confidence="high", evidence="dup Grep")
