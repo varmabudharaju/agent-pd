@@ -85,3 +85,13 @@ def test_real_sudo_command_is_flagged():
     offs = permission_bypass.detect(rec, RULES)
     assert len(offs) == 1
     assert offs[0].severity == "critical"
+
+
+def test_long_command_evidence_is_full():
+    rules = load_rules(None)
+    long_cmd = "sudo echo " + "x" * 300
+    rec = _rec([Action(agent_id="a1", tool_name="Bash", tool_input={"command": long_cmd})])
+    offs = permission_bypass.detect(rec, rules)
+    assert len(offs) == 1
+    assert "x" * 300 in offs[0].evidence
+    assert "…" not in offs[0].evidence

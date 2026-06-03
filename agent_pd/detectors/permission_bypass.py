@@ -12,9 +12,8 @@ EXEC_TOOLS = {"Bash"}
 _NOISE_KEYS = {"description"}  # free-text field; not part of the action — see redundant.py
 
 
-def _summ(tool_input: dict, limit: int = 120) -> str:
-    s = json.dumps(tool_input, sort_keys=True)
-    return s if len(s) <= limit else s[:limit] + "…"
+def _summ(tool_input: dict) -> str:
+    return json.dumps(tool_input, sort_keys=True)
 
 
 def detect(record, rules) -> list:

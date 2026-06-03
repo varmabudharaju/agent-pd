@@ -24,7 +24,7 @@ def detect(record, rules) -> list:
         key = (a.tool_name, _key_input(a.tool_input))
         counts[key] = counts.get(key, 0) + 1
         if counts[key] == 2:   # report once, on first repeat
-            payload = key[1] if len(key[1]) <= 120 else key[1][:120] + "…"
+            payload = key[1]
             out.append(Offense(record.agent_id, record.agent_type, OFFENSE, sev, "high",
                                f"duplicate {a.tool_name}: {payload}"))
     return out

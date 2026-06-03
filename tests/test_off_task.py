@@ -84,3 +84,16 @@ def test_extract_search_term_skips_flag_values():
     assert _extract_search_term("grep -e bar baz") == "bar"
     assert _extract_search_term("grep foo .") == "foo"
     assert _extract_search_term("grep -rn foo /path") == "foo"
+
+
+def test_long_query_evidence_is_full():
+    from agent_pd.models import Action, AgentRecord
+    from agent_pd.config import load_rules
+    from agent_pd.detectors import off_task
+    rules = load_rules(None)
+    q = "z" * 200
+    rec = AgentRecord(agent_id="a1", agent_type="x", brief="fix the parser", cwd="/p",
+                      actions=[Action(agent_id="a1", tool_name="Grep", tool_input={"pattern": q})])
+    offs = off_task.detect(rec, rules)
+    assert len(offs) == 1
+    assert q in offs[0].evidence and "…" not in offs[0].evidence
