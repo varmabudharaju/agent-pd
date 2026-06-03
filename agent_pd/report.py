@@ -13,10 +13,10 @@ def render_json(offenses: list) -> str:
 
 
 def _ev_cell(evidence: str, verbose: bool) -> str:
-    s = evidence.replace("|", "\\|")
-    if not verbose and len(s) > _MD_EVIDENCE_LIMIT:
-        s = s[:_MD_EVIDENCE_LIMIT] + "…"
-    return s
+    # truncate the raw evidence first, then escape — so we never clip a "\|" pair
+    if not verbose and len(evidence) > _MD_EVIDENCE_LIMIT:
+        evidence = evidence[:_MD_EVIDENCE_LIMIT] + "…"
+    return evidence.replace("|", "\\|")
 
 
 def _offense_table(offs: list, verbose: bool) -> list:
