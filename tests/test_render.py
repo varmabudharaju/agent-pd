@@ -110,6 +110,12 @@ def test_feed_line_verbose_shows_full_command_and_reason():
     assert ("y" * 200) in verbose[0]              # full command shown when verbose
 
 
+def test_info_badge_renders_plain():
+    from agent_pd.render import badge, Style
+    b = badge("info", Style(color=False, emoji=False))
+    assert "INFO" in b
+
+
 def test_rap_sheet_shows_crimes_acts_and_tools():
     entries = [
         {"tag": "gp·a55d", "color": "31", "crimes": {"critical": 1, "high": 1},

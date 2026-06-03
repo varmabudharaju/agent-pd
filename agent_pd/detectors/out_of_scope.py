@@ -2,6 +2,7 @@ import os
 
 from ..models import Offense
 from .. import scope as scopelib
+from ..permissions import is_permitted
 
 OFFENSE = "out_of_scope"
 FILE_TOOLS = {"Read", "Write", "Edit", "NotebookEdit"}
@@ -16,6 +17,8 @@ def detect(record, rules) -> list:
     cwd = record.cwd or os.getcwd()
     high = rules.severity.get(OFFENSE, "high")
     crit = rules.severity.get("out_of_scope_sensitive", "critical")
+    info = rules.severity.get("permitted", "info")
+    allow = getattr(record, "allow_rules", []) or []
     out, seen = [], set()
     for a in record.actions:
         raw_paths = []
@@ -42,11 +45,15 @@ def detect(record, rules) -> list:
             seen.add(key)
             if kind == "sensitive":
                 ev = f"{tool_label} touched {raw} (sensitive: {detail})"
-                out.append(Offense(record.agent_id, record.agent_type, OFFENSE, crit, "high", ev))
+                sev = crit
             elif kind == "boundary":
                 ev = f"{tool_label} touched {raw} (outside project {detail})"
-                out.append(Offense(record.agent_id, record.agent_type, OFFENSE, high, "high", ev))
+                sev = high
             else:
                 ev = f"{tool_label} touched {raw} (outside scope {detail})"
-                out.append(Offense(record.agent_id, record.agent_type, OFFENSE, high, "high", ev))
+                sev = high
+            if is_permitted(tool_label, a.tool_input, abspath, allow):
+                sev = info
+                ev += " (permitted by allow-rule)"
+            out.append(Offense(record.agent_id, record.agent_type, OFFENSE, sev, "high", ev))
     return out

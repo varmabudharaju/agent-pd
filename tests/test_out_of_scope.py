@@ -70,6 +70,27 @@ def test_dedup_same_path_once():
     assert len(out_of_scope.detect(rec, rules)) == 1
 
 
+def test_permitted_bash_downgraded_to_info():
+    rules = load_rules(None)
+    rec = AgentRecord(agent_id="a1", agent_type="Explore", brief="b", cwd="/proj",
+                      actions=[Action(agent_id="a1", tool_name="Bash",
+                                      tool_input={"command": "cat /etc/hosts"})],
+                      allow_rules=["Bash(cat:*)"])
+    offs = out_of_scope.detect(rec, rules)
+    assert len(offs) == 1
+    assert offs[0].severity == "info"
+    assert "permitted" in offs[0].evidence
+
+
+def test_unpermitted_bash_stays_high():
+    rules = load_rules(None)
+    rec = AgentRecord(agent_id="a1", agent_type="Explore", brief="b", cwd="/proj",
+                      actions=[Action(agent_id="a1", tool_name="Bash",
+                                      tool_input={"command": "cat /etc/hosts"})],
+                      allow_rules=["Bash(ls:*)"])
+    assert out_of_scope.detect(rec, rules)[0].severity == "high"
+
+
 def test_detector_can_be_disabled_via_boundary_and_empty_allowlist():
     rules = replace(load_rules(None), project_boundary=False, scope_dirs=[], sensitive_patterns=[])
     rec = _rec([Action(agent_id="a1", tool_name="Write",

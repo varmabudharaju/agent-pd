@@ -18,6 +18,7 @@ class AgentRecord:
     brief: str
     cwd: str
     actions: list = field(default_factory=list)   # list[Action]
+    allow_rules: list = field(default_factory=list)   # configured permission allow-rules (for info-downgrade)
 
 
 @dataclass
