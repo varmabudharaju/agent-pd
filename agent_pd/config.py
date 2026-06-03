@@ -24,6 +24,7 @@ DEFAULTS = {
         "redundant": "low",
         "off_task": "review",
         "self_permission": "critical",
+        "tool_not_allowed": "high",
     },
     "detectors": {
         "permission_bypass": True,
@@ -31,6 +32,7 @@ DEFAULTS = {
         "redundant": True,
         "off_task": True,
         "self_permission": True,
+        "tool_not_allowed": True,
     },
     "off_task_overlap_threshold": 0.15,
 }

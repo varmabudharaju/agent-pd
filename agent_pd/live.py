@@ -13,6 +13,7 @@ from pathlib import Path
 from .models import Action, AgentRecord
 from .config import load_rules
 from .permissions import load_allow_rules
+from .agents_def import load_agent_tools
 from .detectors import run_detectors
 from .investigator import (
     find_subagents_dir, load_meta, DEFAULT_PROJECTS_DIR, DEFAULT_AUDIT_DIR,
@@ -62,7 +63,8 @@ class LiveMonitor:
             brief = self._load_brief(event)
             self.records[aid] = AgentRecord(agent_id=aid, agent_type=atype, brief=brief,
                                             cwd=event.get("cwd", ""), actions=[],
-                                            allow_rules=load_allow_rules(event.get("cwd", "")))
+                                            allow_rules=load_allow_rules(event.get("cwd", "")),
+                                            tool_allowlist=load_agent_tools(atype, event.get("cwd", "")))
             self.emitted[aid] = set()
             self.tallies[aid] = Counter()
             new_agent = True
