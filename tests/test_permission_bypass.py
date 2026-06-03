@@ -10,7 +10,7 @@ def _rec(actions):
 def test_flags_denied_action():
     rec = _rec([Action(agent_id="a1", tool_name="Bash",
                        tool_input={"command": "rm x"}, decision="deny",
-                       reason="blocked", source="audit")])
+                       reason="blocked")])
     offs = permission_bypass.detect(rec, RULES)
     assert len(offs) == 1
     assert offs[0].offense == "permission_bypass"

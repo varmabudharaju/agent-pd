@@ -75,8 +75,7 @@ class LiveMonitor:
 
         action = Action(agent_id=aid, tool_name=tool,
                         tool_input=event.get("tool_input") or {}, ts=event.get("ts"),
-                        decision=event.get("decision"), reason=event.get("reason"),
-                        source="audit")
+                        decision=event.get("decision"), reason=event.get("reason"))
         rec.actions.append(action)
         self.total_acts += 1
 
