@@ -3,7 +3,7 @@ import sys
 from pathlib import Path
 
 from .config import load_rules
-from .investigator import gather, DEFAULT_PROJECTS_DIR, DEFAULT_AUDIT_DIR
+from .investigator import gather, _latest_session, DEFAULT_PROJECTS_DIR, DEFAULT_AUDIT_DIR
 from .detectors import run_detectors
 from .report import render_json, render_markdown
 from .hook import DEFAULT_AUDIT_DIR as HOOK_AUDIT_DIR
@@ -11,15 +11,16 @@ from .hook import DEFAULT_AUDIT_DIR as HOOK_AUDIT_DIR
 
 def _cmd_report(args) -> int:
     rules = load_rules(args.rules)
-    records = gather(session_id=args.session,
-                     projects_dir=args.projects_dir, audit_dir=args.audit_dir)
+    sid = args.session or _latest_session(Path(args.projects_dir), Path(args.audit_dir))
+    records = gather(session_id=sid, projects_dir=args.projects_dir, audit_dir=args.audit_dir)
     offenses = []
     for rec in records:
         offenses.extend(run_detectors(rec, rules))
     if args.format in ("json", "both"):
         print(render_json(offenses))
     if args.format in ("md", "both"):
-        print(render_markdown(records, offenses))
+        print(render_markdown(records, offenses, session_id=sid,
+                              verbose=args.verbose, only_agent=args.agent))
     return 0
 
 
@@ -104,6 +105,10 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--rules", default=None)
     r.add_argument("--projects-dir", default=DEFAULT_PROJECTS_DIR)
     r.add_argument("--audit-dir", default=DEFAULT_AUDIT_DIR)
+    r.add_argument("-v", "--verbose", action="store_true",
+                   help="show full (untruncated) evidence and a files-touched list")
+    r.add_argument("--agent", default=None,
+                   help="focus on one agent (id prefix, or 'main') and list all its actions")
     r.set_defaults(func=_cmd_report)
 
     l = sub.add_parser("list", help="list available sessions")
