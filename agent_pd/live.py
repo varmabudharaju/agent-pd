@@ -210,7 +210,7 @@ def watch(session=None, crimes_only=False, verbose=False, all_sessions=False, st
     except KeyboardInterrupt:
         pass
     out("─" * 80)
-    total_crimes = sum(sum(c.values()) for c in mon.tallies.values())
+    total_crimes = sum(n for c in mon.tallies.values() for s, n in c.items() if s != "info")
     if crimes_only and total_crimes == 0 and mon.total_acts:
         out(" no crimes — here's what each agent did instead "
             "(drop --crimes-only to see the live action feed):")

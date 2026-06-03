@@ -51,10 +51,9 @@ def _path_match(abspath: str, spec: str) -> bool:
     spec = os.path.expanduser(spec)
     if spec.startswith("//"):          # Claude Code's absolute-path marker
         spec = spec[1:]
-    bare = spec.rstrip("/")
+    # fnmatch's '*' already crosses '/', so a trailing '/**' behaves like '/*'.
     return (fnmatch.fnmatch(abspath, spec)
-            or fnmatch.fnmatch(abspath, bare + "/*")
-            or fnmatch.fnmatch(abspath, bare + "/**"))
+            or fnmatch.fnmatch(abspath, spec.rstrip("/") + "/*"))
 
 
 def is_permitted(tool_name: str, tool_input: dict, abspath, rules: list) -> bool:
