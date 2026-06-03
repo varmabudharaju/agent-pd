@@ -37,7 +37,7 @@ def test_write_content_mentioning_pattern_not_flagged():
 
 def test_bash_dangerous_sandbox_flag_flagged():
     rec = _rec([Action(agent_id="a1", tool_name="Bash",
-                       tool_input={"command": "ls; dangerouslyDisableSandbox"})])
+                       tool_input={"command": "ls", "dangerouslyDisableSandbox": True})])
     offs = permission_bypass.detect(rec, RULES)
     assert len(offs) == 1
     assert "dangerouslyDisableSandbox" in offs[0].evidence
