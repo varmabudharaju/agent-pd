@@ -11,6 +11,10 @@ _BASH_SEARCH = {"grep", "egrep", "fgrep", "rg", "ag", "ack", "find", "fd", "loca
                 "curl", "wget"}
 _GREP_FAMILY = {"grep", "egrep", "fgrep", "rg", "ag", "ack"}
 _NAME_FLAGS = {"-name", "-iname", "-path", "-ipath", "-regex", "-wholename"}
+_PATTERN_FLAGS = {"-e", "--regexp"}                 # the flag's value IS the pattern
+_SKIP_VALUE_FLAGS = {"-t", "--type", "-g", "--glob", "-m", "--max-count",
+                     "-f", "--file", "--include", "--exclude",
+                     "-A", "-B", "-C", "--context"}  # value is not the pattern
 _WORD = re.compile(r"[a-z0-9]+")
 _STOP = {"the", "a", "an", "and", "or", "of", "to", "in", "for", "on", "is", "this", "that"}
 
@@ -44,9 +48,19 @@ def _extract_search_term(cmd: str) -> str:
     binary = toks[i].rsplit("/", 1)[-1]
     rest = toks[i + 1:]
     if binary in _GREP_FAMILY:
-        for t in rest:                       # first positional after flags is the pattern
-            if not t.startswith("-"):
-                return t
+        skip_next = False
+        for idx, t in enumerate(rest):
+            if skip_next:
+                skip_next = False
+                continue
+            if t in _PATTERN_FLAGS:                 # `-e PATTERN` → PATTERN is the term
+                return rest[idx + 1] if idx + 1 < len(rest) else ""
+            if t in _SKIP_VALUE_FLAGS:              # `-t py` → skip the value
+                skip_next = True
+                continue
+            if t.startswith("-"):                   # bare flag or --x=y
+                continue
+            return t                                # first positional = pattern
         return ""
     if binary in ("find", "fd"):
         for j, t in enumerate(rest):         # the term is the value after -name/-path/...
