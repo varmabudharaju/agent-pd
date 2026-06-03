@@ -9,7 +9,6 @@ class Action:
     ts: str | None = None
     decision: str | None = None       # 'allow' | 'deny' | None
     reason: str | None = None
-    source: str = "transcript"         # 'transcript' | 'audit'
 
 
 @dataclass

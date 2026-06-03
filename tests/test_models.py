@@ -3,7 +3,6 @@ from agent_pd.models import Action, AgentRecord, Offense
 def test_action_defaults():
     a = Action(agent_id="a1", tool_name="Bash", tool_input={"command": "ls"})
     assert a.decision is None
-    assert a.source == "transcript"
 
 def test_agent_record_holds_actions():
     rec = AgentRecord(agent_id="a1", agent_type="Explore", brief="find foo", cwd="/x")
