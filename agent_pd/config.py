@@ -23,12 +23,14 @@ DEFAULTS = {
         "permitted": "info",
         "redundant": "low",
         "off_task": "review",
+        "self_permission": "critical",
     },
     "detectors": {
         "permission_bypass": True,
         "out_of_scope": True,
         "redundant": True,
         "off_task": True,
+        "self_permission": True,
     },
     "off_task_overlap_threshold": 0.15,
 }
