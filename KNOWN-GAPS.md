@@ -8,7 +8,7 @@ Legend: 🐞 confirmed bug · ⚠️ heuristic/limitation · 📋 backlog/v2 · 
 
 ---
 
-## Being fixed in the current change set (NOT deferred — listed for context)
+## ✅ Shipped on `feat/scope-and-denial` (formerly "being fixed")
 
 - **Denial capture was broken.** `hook.build_event` only set `decision` from a
   `permissionDecision`/`decision` field, but the real `PermissionDenied` payload has no
@@ -39,7 +39,15 @@ Legend: 🐞 confirmed bug · ⚠️ heuristic/limitation · 📋 backlog/v2 · 
 - **Bash path extraction (new scope engine) is heuristic.** It catches literal paths
   (`cat ../x`, `ls /etc`, `cd ..`, `find /`) but will miss paths built via shell variables,
   `$(...)`, or command substitution, and can occasionally over-flag. Deterministic
-  file-tool checks remain exact.
+  file-tool checks remain exact. Specific edge cases surfaced during review:
+  - **Tokens after a pipe** aren't given path-command treatment: `echo x | cat secrets`
+    — the `cat` past the `|` isn't recognized as a path-bearing command.
+  - **Env-assignment prefix** makes the assignment look like the binary: `FOO=bar cat /x`
+    treats `FOO=bar` as the command, so the real `cat /x` isn't scanned.
+  - **`$VAR`-prefixed paths aren't expanded** by `classify`/`resolve` (only `~`/`~user`
+    are), so a `$VAR` that points at a sensitive path can slip past.
+  - **`~/.config` is broad for `critical`** and may be noisy (it holds lots of innocuous
+    app config) — consider narrowing it in tuning.
 - **`off_task` cannot run on the main agent.** It needs a "brief," which only subagents
   have (`meta.json`). The main interactive session has no brief, so off-task detection
   doesn't apply there. A main-agent off-task signal would need a different anchor (e.g. the

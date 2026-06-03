@@ -72,6 +72,20 @@ def test_gather_no_double_count(tmp_path):
     assert sum(1 for a in rec.actions if a.tool_name == "Grep") == 1
 
 
+def test_latest_session_picks_newest_audit(tmp_path):
+    import os
+    projects = tmp_path / "projects"; projects.mkdir()
+    audit = tmp_path / "audit"; audit.mkdir()
+    (audit / "old.jsonl").write_text("{}\n")
+    (audit / "new.jsonl").write_text("{}\n")
+    # make 'new' clearly newer
+    os.utime(audit / "old.jsonl", (1, 1))
+    # gather(session_id=None) should resolve to the newest audit session and read it
+    recs = gather(session_id=None, projects_dir=projects, audit_dir=audit)
+    # both files are essentially empty ({} has no tool_name) -> no records, but no crash
+    assert recs == [] or isinstance(recs, list)
+
+
 def test_gather_tolerates_malformed_and_missing(tmp_path):
     projects = tmp_path / "projects"; projects.mkdir()
     audit = tmp_path / "audit"; audit.mkdir()

@@ -6,7 +6,7 @@ tool/permission event; a CLI audits those logs and reports rule offenses with ev
 
 - **Repo:** https://github.com/varmabudharaju/agent-pd (branch `master`)
 - **Local:** `/Users/varma/agent-pd` · Python 3.11 (use `python3`) · CLI: `pd`
-- **State at handoff:** 81 tests passing, working tree clean, all pushed.
+- **State at handoff:** 102 tests passing, working tree clean, all pushed.
 - **Author policy:** all commits under `varma <sairam.vzf33@gmail.com>` — **no Co-Authored-By / no Claude or Anthropic attribution** in commits or PRs.
 
 ---
@@ -35,7 +35,7 @@ tool/permission event; a CLI audits those logs and reports rule offenses with ev
 | Offense | Severity | How | Confidence |
 |---|---|---|---|
 | `permission_bypass` | critical | denied calls + escalation patterns (`sudo `, `dangerouslyDisableSandbox`…) in **Bash** commands only | high |
-| `out_of_scope` | high | file path outside `scope_dirs` (no-op unless `scope_dirs` set) | high |
+| `out_of_scope` | high | file OR Bash path outside the project (auto: git root or cwd), sensitive paths always (critical), or outside `scope_dirs` when set | high |
 | `redundant` | low | exact-duplicate tool calls (ignores Bash `description` noise) | high |
 | `off_task` | review | search term (incl. shell `grep`/`find`/`curl`) vs. brief word-overlap < threshold | **low — heuristic** |
 
@@ -92,7 +92,7 @@ agent_pd/
   models.py         # Action, AgentRecord, Offense dataclasses
   install_hook.py   # idempotent settings.json hook registration
   cli.py            # argparse: report/list/install-hook/watch/judge
-tests/              # 81 tests, pure (no API key needed — judge uses injected fake clients)
+tests/              # 102 tests, pure (no API key needed — judge uses injected fake clients)
 pd-rules.yaml       # user-editable rules
 docs/superpowers/   # specs + the original implementation plan
 ```
@@ -103,7 +103,7 @@ docs/superpowers/   # specs + the original implementation plan
 cd ~/agent-pd
 pip install --user -e .          # core (zero runtime deps but PyYAML)
 pip install --user -e ".[judge]" # + anthropic SDK (only for the API judge backend)
-python3 -m pytest -q             # 81 tests
+python3 -m pytest -q             # 102 tests
 ```
 
 TDD throughout; detectors/render/live/judge are all unit-tested with no network.
@@ -120,9 +120,14 @@ TDD throughout; detectors/render/live/judge are all unit-tested with no network.
   results would risk bloating the audit log — deliberately left out.
 - **`off_task` is inherently noisy** (word-overlap). The judge is the real fix; the
   detector is hard-labeled low-confidence "review" and never critical.
-- **`PermissionDenied` payload field names** weren't confirmed against a live denial yet
-  (see `NOTES.md`). `hook.py` reads fields defensively (camelCase + snake_case), so this
-  refines but doesn't block.
+- **`PermissionDenied` decision** is now inferred from the event name (the hook sets
+  `decision="deny"` for `PermissionDenied`), so denied calls are captured and flagged
+  critical — no longer broken. The exact live payload *field names* still weren't
+  confirmed against a real denial (see `NOTES.md`); `hook.py` reads fields defensively
+  (camelCase + snake_case), so this refines but doesn't block.
+- **Sessions that predate the hook won't appear in `pd report`.** `gather()` reads only
+  the audit log (single source of truth covering main + subagents), so a session with no
+  `~/.claude/pd/audit/<session>.jsonl` is invisible to `pd report`. Intended tradeoff.
 - **Concurrent appends:** multiple subagents in one session append to the same file;
   a >4 KB tool input could in theory interleave a line. Harmless — the reader skips any
   malformed/partial line.
