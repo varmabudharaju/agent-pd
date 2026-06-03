@@ -27,9 +27,9 @@ def detect(record, rules) -> list:
             continue
         if a.tool_name not in EXEC_TOOLS:
             continue
-        blob = json.dumps(a.tool_input).lower()
+        cmd = str((a.tool_input or {}).get("command", "")).lower()
         for p in patterns:
-            if p.lower() in blob:
+            if p.lower() in cmd:
                 out.append(Offense(record.agent_id, record.agent_type, OFFENSE, sev, "high",
                                    f"{a.tool_name}: matched escalation pattern "
                                    f"'{p}' in {_summ(a.tool_input)}"))

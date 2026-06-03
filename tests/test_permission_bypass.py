@@ -37,7 +37,7 @@ def test_write_content_mentioning_pattern_not_flagged():
 
 def test_bash_dangerous_sandbox_flag_flagged():
     rec = _rec([Action(agent_id="a1", tool_name="Bash",
-                       tool_input={"command": "ls", "dangerouslyDisableSandbox": True})])
+                       tool_input={"command": "ls; dangerouslyDisableSandbox"})])
     offs = permission_bypass.detect(rec, RULES)
     assert len(offs) == 1
     assert "dangerouslyDisableSandbox" in offs[0].evidence
@@ -49,3 +49,15 @@ def test_denied_write_still_flagged():
     offs = permission_bypass.detect(rec, RULES)
     assert len(offs) == 1
     assert "denied" in offs[0].evidence
+
+def test_description_mentioning_sudo_is_not_flagged():
+    rec = _rec([Action(agent_id="a1", tool_name="Bash",
+                       tool_input={"command": "ls -la", "description": "use sudo to inspect"})])
+    assert permission_bypass.detect(rec, RULES) == []
+
+def test_real_sudo_command_is_flagged():
+    rec = _rec([Action(agent_id="a1", tool_name="Bash",
+                       tool_input={"command": "sudo rm -rf /tmp/x"})])
+    offs = permission_bypass.detect(rec, RULES)
+    assert len(offs) == 1
+    assert offs[0].severity == "critical"
