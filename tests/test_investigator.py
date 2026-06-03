@@ -1,27 +1,10 @@
 import json
-from pathlib import Path
-from agent_pd.investigator import parse_transcript, load_meta, gather
+from agent_pd.investigator import load_meta, gather
 
-def _write_transcript(path, agent_id, tool_calls):
-    lines = []
-    for name, inp in tool_calls:
-        lines.append(json.dumps({
-            "agentId": agent_id, "sessionId": "s1", "cwd": "/proj",
-            "timestamp": "2026-06-01T00:00:00Z", "type": "assistant",
-            "message": {"role": "assistant", "content": [
-                {"type": "text", "text": "thinking..."},
-                {"type": "tool_use", "name": name, "input": inp},
-            ]},
-        }))
-    path.write_text("\n".join(lines) + "\n")
 
-def test_parse_transcript_extracts_tool_uses(tmp_path):
-    t = tmp_path / "agent-a1.jsonl"
-    _write_transcript(t, "a1", [("Grep", {"pattern": "foo"}), ("Bash", {"command": "ls"})])
-    actions = parse_transcript(t)
-    assert [a.tool_name for a in actions] == ["Grep", "Bash"]
-    assert actions[0].tool_input == {"pattern": "foo"}
-    assert actions[0].source == "transcript"
+def _audit(path, events):
+    path.write_text("\n".join(json.dumps(e) for e in events) + "\n")
+
 
 def test_load_meta(tmp_path):
     m = tmp_path / "agent-a1.meta.json"
@@ -30,60 +13,73 @@ def test_load_meta(tmp_path):
     assert agent_type == "Explore"
     assert brief == "find foo"
 
-def test_gather_survives_malformed_first_line(tmp_path):
-    projects = tmp_path / "projects"
-    sub = projects / "-proj" / "s1" / "subagents"
-    sub.mkdir(parents=True)
-    # leading blank line + a valid tool_use line further down
-    body = "\n" + json.dumps({
-        "agentId": "a1", "cwd": "/proj", "type": "assistant",
-        "message": {"role": "assistant", "content": [
-            {"type": "tool_use", "name": "Grep", "input": {"pattern": "foo"}}]}}) + "\n"
-    (sub / "agent-a1.jsonl").write_text(body)
-    (sub / "agent-a1.meta.json").write_text(json.dumps(
-        {"agentType": "Explore", "description": "find foo"}))
-    audit = tmp_path / "audit"; audit.mkdir()
-    records = gather(session_id="s1", projects_dir=projects, audit_dir=audit)
-    assert len(records) == 1
-    assert records[0].cwd == "/proj"   # cwd recovered from the first PARSEABLE object line
-    assert any(a.tool_name == "Grep" for a in records[0].actions)
 
-
-def test_gather_includes_audit_only_agent(tmp_path):
-    # an agent that appears ONLY in the audit log (denied before any transcript entry)
+def test_gather_includes_main_agent(tmp_path):
     projects = tmp_path / "projects"; projects.mkdir()
     audit = tmp_path / "audit"; audit.mkdir()
-    (audit / "s1.jsonl").write_text(json.dumps({
-        "event": "PermissionDenied", "session_id": "s1", "agent_id": "ghost",
-        "tool_name": "Bash", "tool_input": {"command": "sudo x"},
-        "decision": "deny", "reason": "blocked"}) + "\n")
+    _audit(audit / "s1.jsonl", [
+        {"event": "PostToolUse", "session_id": "s1", "agent_id": "", "tool_name": "Read",
+         "tool_input": {"file_path": "/proj/app.py"}, "cwd": "/proj"},
+    ])
     records = gather(session_id="s1", projects_dir=projects, audit_dir=audit)
     assert len(records) == 1
-    assert records[0].agent_id == "ghost"
-    assert records[0].actions[0].decision == "deny"
+    assert records[0].agent_id == ""
+    assert records[0].agent_type == "main"
+    assert records[0].actions[0].tool_name == "Read"
 
 
-def test_gather_correlates_transcript_meta_and_audit(tmp_path):
+def test_gather_includes_subagent_with_brief(tmp_path):
     projects = tmp_path / "projects"
     sub = projects / "-proj" / "s1" / "subagents"
     sub.mkdir(parents=True)
-    _write_transcript(sub / "agent-a1.jsonl", "a1", [("Grep", {"pattern": "foo"})])
     (sub / "agent-a1.meta.json").write_text(json.dumps(
         {"agentType": "Explore", "description": "find foo"}))
-    audit = tmp_path / "audit"
-    audit.mkdir()
-    (audit / "s1.jsonl").write_text(json.dumps({
-        "event": "PermissionDenied", "session_id": "s1", "agent_id": "a1",
-        "agent_type": "Explore", "tool_name": "Bash",
-        "tool_input": {"command": "sudo rm -rf /"}, "decision": "deny",
-        "reason": "blocked"}) + "\n")
-
+    audit = tmp_path / "audit"; audit.mkdir()
+    _audit(audit / "s1.jsonl", [
+        {"event": "PostToolUse", "session_id": "s1", "agent_id": "a1", "agent_type": "Explore",
+         "tool_name": "Grep", "tool_input": {"pattern": "foo"}, "cwd": "/proj"},
+    ])
     records = gather(session_id="s1", projects_dir=projects, audit_dir=audit)
-    assert len(records) == 1
-    rec = records[0]
-    assert rec.agent_id == "a1"
+    rec = next(r for r in records if r.agent_id == "a1")
     assert rec.agent_type == "Explore"
     assert rec.brief == "find foo"
-    names = [(a.tool_name, a.source, a.decision) for a in rec.actions]
-    assert ("Grep", "transcript", None) in names
-    assert ("Bash", "audit", "deny") in names
+    assert rec.actions[0].tool_name == "Grep"
+
+
+def test_gather_surfaces_denial(tmp_path):
+    projects = tmp_path / "projects"; projects.mkdir()
+    audit = tmp_path / "audit"; audit.mkdir()
+    # On-disk shape after the hook ran: PermissionDenied with decision already inferred.
+    _audit(audit / "s1.jsonl", [
+        {"event": "PermissionDenied", "session_id": "s1", "agent_id": "a1",
+         "tool_name": "Bash", "tool_input": {"command": "sudo rm -rf /"},
+         "decision": "deny", "reason": "blocked", "cwd": "/proj"},
+    ])
+    records = gather(session_id="s1", projects_dir=projects, audit_dir=audit)
+    rec = next(r for r in records if r.agent_id == "a1")
+    assert rec.actions[0].decision == "deny"
+
+
+def test_gather_no_double_count(tmp_path):
+    projects = tmp_path / "projects"; projects.mkdir()
+    audit = tmp_path / "audit"; audit.mkdir()
+    _audit(audit / "s1.jsonl", [
+        {"event": "PostToolUse", "session_id": "s1", "agent_id": "a1",
+         "tool_name": "Grep", "tool_input": {"pattern": "foo"}, "cwd": "/proj"},
+    ])
+    records = gather(session_id="s1", projects_dir=projects, audit_dir=audit)
+    rec = next(r for r in records if r.agent_id == "a1")
+    assert sum(1 for a in rec.actions if a.tool_name == "Grep") == 1
+
+
+def test_gather_tolerates_malformed_and_missing(tmp_path):
+    projects = tmp_path / "projects"; projects.mkdir()
+    audit = tmp_path / "audit"; audit.mkdir()
+    (audit / "s1.jsonl").write_text(
+        "not json\n" + json.dumps(
+            {"event": "PostToolUse", "session_id": "s1", "agent_id": "a1",
+             "tool_name": "Read", "tool_input": {"file_path": "/proj/x"}, "cwd": "/proj"}) + "\n")
+    records = gather(session_id="s1", projects_dir=projects, audit_dir=audit)
+    assert any(r.agent_id == "a1" for r in records)
+    # missing session file -> empty
+    assert gather(session_id="nope", projects_dir=projects, audit_dir=audit) == []

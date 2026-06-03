@@ -17,14 +17,15 @@ def test_judge_dry_run_with_offtask(tmp_path, capsys):
     projects = tmp_path / "projects"
     sub = projects / "-proj" / "s2" / "subagents"
     sub.mkdir(parents=True)
-    line = json.dumps({"agentId": "z1", "sessionId": "s2", "cwd": "/proj",
-                       "type": "assistant", "message": {"role": "assistant", "content": [
-                           {"type": "tool_use", "name": "Grep", "input": {"pattern": "kubernetes"}}]}})
-    (sub / "agent-z1.jsonl").write_text(line + "\n")
     (sub / "agent-z1.meta.json").write_text(json.dumps(
         {"agentType": "Explore", "description": "find the version string"}))
     audit = tmp_path / "audit"
     audit.mkdir()
+    # audit log is the single source of truth: Grep "kubernetes" vs brief -> off_task
+    (audit / "s2.jsonl").write_text(json.dumps(
+        {"event": "PostToolUse", "session_id": "s2", "agent_id": "z1",
+         "agent_type": "Explore", "tool_name": "Grep",
+         "tool_input": {"pattern": "kubernetes"}, "cwd": "/proj"}) + "\n")
     rc = main(["judge", "--session", "s2", "--projects-dir", str(projects),
                "--audit-dir", str(audit)])
     assert rc == 0
@@ -52,15 +53,15 @@ def _setup_session(tmp_path):
     projects = tmp_path / "projects"
     sub = projects / "-proj" / "s1" / "subagents"
     sub.mkdir(parents=True)
-    line = json.dumps({"agentId": "a1", "sessionId": "s1", "cwd": "/proj",
-                       "type": "assistant", "message": {"role": "assistant", "content": [
-                           {"type": "tool_use", "name": "Grep", "input": {"pattern": "foo"}},
-                           {"type": "tool_use", "name": "Grep", "input": {"pattern": "foo"}}]}})
-    (sub / "agent-a1.jsonl").write_text(line + "\n")
     (sub / "agent-a1.meta.json").write_text(json.dumps(
         {"agentType": "Explore", "description": "find foo"}))
     audit = tmp_path / "audit"
     audit.mkdir()
+    # audit log is the single source of truth: two identical Grep "foo" -> redundant
+    ev = {"event": "PostToolUse", "session_id": "s1", "agent_id": "a1",
+          "agent_type": "Explore", "tool_name": "Grep",
+          "tool_input": {"pattern": "foo"}, "cwd": "/proj"}
+    (audit / "s1.jsonl").write_text(json.dumps(ev) + "\n" + json.dumps(ev) + "\n")
     return projects, audit
 
 def test_report_json_lists_redundant(tmp_path, capsys):
