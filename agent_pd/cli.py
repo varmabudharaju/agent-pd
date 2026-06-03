@@ -78,6 +78,8 @@ def _cmd_judge(args) -> int:
                  f"{result['usage']['output_tokens']}out tokens)")
     print(f"Judged {est['items']} flagged item(s): {len(confirmed)} confirmed off-task, "
           f"{dropped} dropped as false positives{cost}.")
+    if result.get("errored"):
+        print(f"  {result['errored']} item(s) could not be judged (backend error).")
     for o in confirmed:
         print(f"  [{o.agent_type} {o.agent_id[:8]}] '{o.subject}' — {o.evidence}")
     return 0
