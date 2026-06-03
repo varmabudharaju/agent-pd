@@ -57,3 +57,19 @@ def test_bash_duplicates_still_flagged():
         Action(agent_id="a1", tool_name="Bash", tool_input={"command": "ls"}),
     ])
     assert len(redundant.detect(rec, rules)) == 1
+
+
+def test_long_duplicate_evidence_is_full():
+    from agent_pd.models import Action, AgentRecord
+    from agent_pd.config import load_rules
+    from agent_pd.detectors import redundant
+    rules = load_rules(None)
+    long_cmd = "echo " + "y" * 300
+    rec = AgentRecord(agent_id="a1", agent_type="x", brief="b", cwd="/p", actions=[
+        Action(agent_id="a1", tool_name="Bash", tool_input={"command": long_cmd}),
+        Action(agent_id="a1", tool_name="Bash", tool_input={"command": long_cmd}),
+    ])
+    offs = redundant.detect(rec, rules)
+    assert len(offs) == 1
+    assert "y" * 300 in offs[0].evidence
+    assert "…" not in offs[0].evidence

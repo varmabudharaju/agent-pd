@@ -114,9 +114,7 @@ def detect(record, rules) -> list:
             continue
         overlap = len(qt & brief_tokens) / len(qt)
         if overlap < threshold:
-            term = q if len(q) <= 50 else q[:49] + "…"
-            brief = record.brief if len(record.brief) <= 50 else record.brief[:49] + "…"
             out.append(Offense(record.agent_id, record.agent_type, OFFENSE, sev, "low",
-                               f"searched '{term}' — {overlap:.0%} word-overlap with "
-                               f"brief '{brief}'", subject=q))
+                               f"searched '{q}' — {overlap:.0%} word-overlap with "
+                               f"brief '{record.brief}'", subject=q))
     return out
