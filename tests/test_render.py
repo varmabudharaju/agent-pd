@@ -136,3 +136,35 @@ def test_rap_sheet_clean_agent_still_shows_activity():
                 "acts": 14, "tools": {"Grep": 6, "Read": 5, "Bash": 3}}]
     out = format_rap_sheet(entries, total_acts=14, style=Style(color=False, emoji=False))
     assert "14 acts" in out and "Grep×6" in out and "Read×5" in out
+
+
+def test_info_only_feed_line_hidden_under_crimes_only():
+    from agent_pd.render import format_feed_line, Style
+    from agent_pd.models import Offense
+    o = Offense("a1", "gp", "out_of_scope", "info", "high", "x (permitted by allow-rule)")
+    plain = Style(color=False, emoji=False)
+    # hidden under --crimes-only (permitted, not a crime)
+    assert format_feed_line("t", "gp", "a1", "Bash", {"command": "cat /x"}, [o],
+                            plain, crimes_only=True) == []
+    # but visible in the normal feed, badged INFO
+    lines = format_feed_line("t", "gp", "a1", "Bash", {"command": "cat /x"}, [o],
+                             plain, crimes_only=False)
+    assert lines and "INFO" in lines[0]
+
+
+def test_real_crime_still_shown_under_crimes_only():
+    from agent_pd.render import format_feed_line, Style
+    from agent_pd.models import Offense
+    o = Offense("a1", "gp", "out_of_scope", "high", "high", "Bash touched /etc (outside project)")
+    lines = format_feed_line("t", "gp", "a1", "Bash", {"command": "cat /etc/x"}, [o],
+                             Style(color=False, emoji=False), crimes_only=True)
+    assert lines  # not hidden
+
+
+def test_rap_sheet_info_not_counted_as_crime():
+    from agent_pd.render import format_rap_sheet, Style
+    entries = [{"tag": "gp·a1", "color": "37", "crimes": {"info": 2}, "acts": 3, "tools": {"Bash": 3}}]
+    out = format_rap_sheet(entries, 3, Style(color=False, emoji=False))
+    assert "0 crimes" in out      # info excluded from the crime total
+    assert "clean" not in out     # but not 'clean' — the 2 info items are shown
+    assert "2 info" in out

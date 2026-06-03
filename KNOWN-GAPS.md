@@ -48,6 +48,17 @@ Legend: 🐞 confirmed bug · ⚠️ heuristic/limitation · 📋 backlog/v2 · 
     are), so a `$VAR` that points at a sensitive path can slip past.
   - **`~/.config` is broad for `critical`** and may be noisy (it holds lots of innocuous
     app config) — consider narrowing it in tuning.
+- **Permission-aware severity (permissions.py) matches leniently.** When an allow-rule
+  matches, a flagged item is downgraded to `info` (permitted → FYI, not a crime). The
+  matching is deliberately lenient — it can only *under*-flag (downgrade a real crime to
+  info), never falsely escalate:
+  - **Bash allow-rule matching uses prefix `startswith` with no word boundary**, so
+    `Bash(npm install:*)` also matches `npm installfoo` — lenient-only (over-downgrades a
+    flagged item to info, never falsely escalates).
+  - **File-glob matching uses `fnmatch`**, whose `*` crosses `/`, so `Read(~/.config/**)`
+    matches any depth under `~/.config` (broader than Claude Code's real `*` vs `**`
+    distinction) — again lenient-only.
+  - **Allow-rules are read once per agent** at its first event (no mid-session reload).
 - **`off_task` cannot run on the main agent.** It needs a "brief," which only subagents
   have (`meta.json`). The main interactive session has no brief, so off-task detection
   doesn't apply there. A main-agent off-task signal would need a different anchor (e.g. the

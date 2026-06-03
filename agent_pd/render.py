@@ -109,8 +109,8 @@ def _worst(offenses) -> str:
 def format_feed_line(ts, agent_type, agent_id, tool_name, tool_input, offenses,
                      style: Style, crimes_only: bool = False, verbose: bool = False,
                      session: str = None) -> list:
-    if not offenses and crimes_only:
-        return []
+    if crimes_only and not any(o.severity != "info" for o in offenses):
+        return []   # nothing flagged, or only permitted (info) items — stay quiet
     tag = _painted_tag(agent_type, agent_id, style)
     sess = f"{style.paint('§' + session[:7], '2;37')} " if session else ""
     summary = action_summary(tool_name, tool_input, limit=400 if verbose else 48)
@@ -127,14 +127,19 @@ def format_feed_line(ts, agent_type, agent_id, tool_name, tool_input, offenses,
     return lines
 
 
+def _crime_count(crimes: dict) -> int:
+    """Crimes exclude 'info' (permitted-but-flagged items are informational, not crimes)."""
+    return sum(n for s, n in crimes.items() if s != "info")
+
+
 def format_rap_sheet(entries: list, total_acts: int, style: Style) -> str:
     """One line per agent: tag · N acts · top tools · crimes (or 'clean'). entries are
     dicts: {tag, color, crimes:{sev:n}, acts:int, tools:{name:n}}."""
-    total_crimes = sum(sum(e["crimes"].values()) for e in entries)
+    total_crimes = sum(_crime_count(e["crimes"]) for e in entries)
     head = style.paint("RAP SHEET", "1")
     lines = [f" {head} — {len(entries)} agents · {total_crimes} crimes / {total_acts} acts"]
     # worst offenders first, then busiest
-    ordered = sorted(entries, key=lambda e: (-sum(e["crimes"].values()), -e["acts"]))
+    ordered = sorted(entries, key=lambda e: (-_crime_count(e["crimes"]), -e["acts"]))
     for e in ordered:
         tag = style.paint(e["tag"], e["color"])
         if sum(e["crimes"].values()):
