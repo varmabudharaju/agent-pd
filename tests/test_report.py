@@ -35,3 +35,47 @@ def test_render_markdown_escapes_pipes():
                     "Bash: cat a | grep b")]
     md = render_markdown(recs, offs)
     assert "a \\| grep b" in md   # pipe escaped so the table isn't broken
+
+
+def test_main_agent_named_with_project_and_digest():
+    recs = [AgentRecord(agent_id="", agent_type="", brief="", cwd="/Users/x/agent-pd",
+                        actions=[Action(agent_id="", tool_name="Bash",
+                                        tool_input={"command": "ls"}, ts="2026-06-01T11:49:00")])]
+    md = render_markdown(recs, [], session_id="339f8c25-aa")
+    assert "### main · agent-pd (session 339f8c2)" in md
+    assert "1 acts" in md
+
+
+def test_evidence_truncated_by_default_full_in_verbose():
+    long_ev = "Bash: " + "x" * 300
+    recs = [AgentRecord(agent_id="a1", agent_type="Explore", brief="b", cwd="/x")]
+    offs = [Offense("a1", "Explore", "permission_bypass", "critical", "high", long_ev)]
+    md = render_markdown(recs, offs)
+    assert "…" in md and ("x" * 300) not in md
+    md_v = render_markdown(recs, offs, verbose=True)
+    assert ("x" * 300) in md_v
+
+
+def test_verbose_lists_files_touched():
+    recs = [AgentRecord(agent_id="", agent_type="", brief="", cwd="/p", actions=[
+        Action(agent_id="", tool_name="Read", tool_input={"file_path": "/etc/hosts"})])]
+    md = render_markdown(recs, [], verbose=True)
+    assert "files: /etc/hosts" in md
+
+
+def test_agent_focus_lists_actions():
+    recs = [AgentRecord(agent_id="a573f36bxyz", agent_type="Explore", brief="find foo", cwd="/x",
+                        actions=[Action(agent_id="a573f36bxyz", tool_name="Grep",
+                                        tool_input={"pattern": "foo"}, ts="2026-06-01T12:00:00")]),
+            AgentRecord(agent_id="b1", agent_type="Plan", brief="", cwd="/x")]
+    md = render_markdown(recs, [], session_id="s1", only_agent="a573f36b")
+    assert "Explore (a573f36b…)" in md
+    assert "Plan" not in md
+    assert "### actions" in md
+    assert "Grep" in md and "foo" in md
+
+
+def test_agent_focus_not_found():
+    recs = [AgentRecord(agent_id="a1", agent_type="Explore", brief="b", cwd="/x")]
+    md = render_markdown(recs, [], session_id="s1", only_agent="zzz")
+    assert "no agent matching 'zzz'" in md
