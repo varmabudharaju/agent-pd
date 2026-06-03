@@ -20,6 +20,7 @@ DEFAULTS = {
         "permission_bypass": "critical",
         "out_of_scope": "high",
         "out_of_scope_sensitive": "critical",
+        "permitted": "info",
         "redundant": "low",
         "off_task": "review",
     },

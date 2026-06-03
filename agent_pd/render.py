@@ -8,8 +8,9 @@ SEVERITY_STYLE = {
     "high": ("HIGH", "⚠", "33"),
     "low": ("LOW", "●", "35"),
     "review": ("REVIEW", "👁", "34"),
+    "info": ("INFO", "ℹ", "2;37"),
 }
-_SEV_ORDER = {"critical": 0, "high": 1, "low": 2, "review": 3}
+_SEV_ORDER = {"critical": 0, "high": 1, "low": 2, "review": 3, "info": 4}
 
 # stable palette for per-agent coloring (cyan, green, yellow, magenta, blue, bright variants)
 _AGENT_PALETTE = ["36", "32", "33", "35", "34", "31", "96", "92", "93", "95"]
@@ -138,7 +139,7 @@ def format_rap_sheet(entries: list, total_acts: int, style: Style) -> str:
         tag = style.paint(e["tag"], e["color"])
         if sum(e["crimes"].values()):
             bits = []
-            for sev in ("critical", "high", "low", "review"):
+            for sev in ("critical", "high", "low", "review", "info"):
                 n = e["crimes"].get(sev, 0)
                 if n:
                     _, emoji, _ = SEVERITY_STYLE[sev]

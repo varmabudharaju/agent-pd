@@ -1,6 +1,7 @@
 import json
 
 from ..models import Offense
+from ..permissions import is_permitted
 
 OFFENSE = "permission_bypass"
 # Escalation-pattern matching applies only to command-execution tools. Scanning the
@@ -18,6 +19,8 @@ def _summ(tool_input: dict, limit: int = 120) -> str:
 
 def detect(record, rules) -> list:
     sev = rules.severity.get(OFFENSE, "high")
+    info = rules.severity.get("permitted", "info")
+    allow = getattr(record, "allow_rules", []) or []
     patterns = rules.escalation_patterns
     out = []
     for a in record.actions:
@@ -32,8 +35,11 @@ def detect(record, rules) -> list:
         blob = json.dumps(meaningful).lower()
         for p in patterns:
             if p.lower() in blob:
-                out.append(Offense(record.agent_id, record.agent_type, OFFENSE, sev, "high",
+                permitted = is_permitted("Bash", a.tool_input, None, allow)
+                esev = info if permitted else sev
+                note = " (permitted by allow-rule)" if permitted else ""
+                out.append(Offense(record.agent_id, record.agent_type, OFFENSE, esev, "high",
                                    f"{a.tool_name}: matched escalation pattern "
-                                   f"'{p}' in {_summ(a.tool_input)}"))
+                                   f"'{p}' in {_summ(a.tool_input)}{note}"))
                 break
     return out

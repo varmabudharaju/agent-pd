@@ -1,7 +1,7 @@
 import json
 from dataclasses import asdict
 
-_SEV_ORDER = {"critical": 0, "high": 1, "low": 2, "review": 3}
+_SEV_ORDER = {"critical": 0, "high": 1, "low": 2, "review": 3, "info": 4}
 
 
 def render_json(offenses: list) -> str:

@@ -25,6 +25,7 @@ def test_scope_defaults_present():
     assert "*.pem" in r.sensitive_patterns
     assert r.severity["out_of_scope"] == "high"
     assert r.severity["out_of_scope_sensitive"] == "critical"
+    assert r.severity["permitted"] == "info"
 
 def test_scope_overrides(tmp_path):
     p = tmp_path / "pd-rules.yaml"

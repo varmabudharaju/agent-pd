@@ -55,6 +55,30 @@ def test_description_mentioning_sudo_is_not_flagged():
                        tool_input={"command": "ls -la", "description": "use sudo to inspect"})])
     assert permission_bypass.detect(rec, RULES) == []
 
+def test_permitted_escalation_downgraded_to_info():
+    rec = AgentRecord(agent_id="a1", agent_type="gp", brief="b", cwd="/proj",
+                      actions=[Action(agent_id="a1", tool_name="Bash",
+                                      tool_input={"command": "sudo ls"})],
+                      allow_rules=["Bash(sudo:*)"])
+    offs = permission_bypass.detect(rec, RULES)
+    assert len(offs) == 1
+    assert offs[0].severity == "info"
+
+
+def test_unpermitted_escalation_stays_critical():
+    rec = _rec([Action(agent_id="a1", tool_name="Bash", tool_input={"command": "sudo ls"})])
+    assert permission_bypass.detect(rec, RULES)[0].severity == "critical"
+
+
+def test_denied_stays_critical_even_if_permitted():
+    rec = AgentRecord(agent_id="a1", agent_type="gp", brief="b", cwd="/proj",
+                      actions=[Action(agent_id="a1", tool_name="Bash",
+                                      tool_input={"command": "sudo rm"}, decision="deny",
+                                      reason="blocked")],
+                      allow_rules=["Bash(sudo:*)"])
+    assert permission_bypass.detect(rec, RULES)[0].severity == "critical"
+
+
 def test_real_sudo_command_is_flagged():
     rec = _rec([Action(agent_id="a1", tool_name="Bash",
                        tool_input={"command": "sudo rm -rf /tmp/x"})])
