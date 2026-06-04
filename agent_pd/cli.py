@@ -9,6 +9,7 @@ from .report import render_json, render_markdown
 from .hook import DEFAULT_AUDIT_DIR as HOOK_AUDIT_DIR
 from . import store
 from . import integrity
+from . import sink
 
 
 def _cmd_report(args) -> int:
@@ -183,6 +184,65 @@ def _cmd_verify(args) -> int:
     return rc
 
 
+def _resolve_sink_sessions(args):
+    """Resolve the session list for a sink command: --all, --session, or latest."""
+    if args.all_sessions:
+        return store.list_sessions(args.audit_dir)
+    if args.session:
+        return [args.session]
+    sid = store.latest_session(args.audit_dir)
+    return [sid] if sid else []
+
+
+def _cmd_sink_push(args) -> int:
+    cfg = sink.resolve_sink_config(load_rules(args.rules))
+    s = sink.make_sink(cfg)
+    if s is None:
+        print("no sink configured — set PD_SINK_TYPE=file|http "
+              "(+ PD_SINK_PATH / PD_SINK_URL, PD_SINK_TOKEN). See SECURITY.md.")
+        return 0
+
+    sessions = _resolve_sink_sessions(args)
+    if not sessions:
+        print("no sessions")
+        return 0
+
+    failed = False
+    for sid in sessions:
+        try:
+            r = sink.push_session(sid, args.audit_dir, s)
+        except sink.SinkError as e:
+            print(f"sink: {sid} — FAILED: {e}")
+            failed = True
+            continue
+        if r["sent"] == 0 and r["pending"] == 0:
+            print(f"sink: {sid} — up to date")
+        else:
+            print(f"sink: {sid} — sent {r['sent']} event(s) "
+                  f"(forwarded through seq {r['forwarded_seq']})")
+    return 2 if failed else 0
+
+
+def _cmd_sink_status(args) -> int:
+    sessions = _resolve_sink_sessions(args)
+    if not sessions:
+        print("no sessions")
+        return 0
+    for sid in sessions:
+        forwarded = sink.read_forwarded_seq(sid, args.audit_dir)
+        last = max((e.get(integrity.SEQ_KEY, 0)
+                    for e in store.iter_events(sid, args.audit_dir)), default=0)
+        line = f"sink: {sid} — {forwarded}/{last} forwarded"
+        if last == 0:
+            line += " (no integrity data)"
+        elif forwarded < last:
+            line += f" ({last - forwarded} pending)"
+        else:
+            line += " (up to date)"
+        print(line)
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="pd", description="Police department for Claude Code subagents")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -249,6 +309,21 @@ def build_parser() -> argparse.ArgumentParser:
     v.add_argument("--all", dest="all_sessions", action="store_true", help="verify every session")
     v.add_argument("--audit-dir", default=DEFAULT_AUDIT_DIR)
     v.set_defaults(func=_cmd_verify)
+
+    sk = sub.add_parser("sink", help="forward the audit log off-host (tamper-resistance)")
+    sk_sub = sk.add_subparsers(dest="sink_cmd", required=True)
+    skp = sk_sub.add_parser("push", help="forward un-sent chained events to the configured sink")
+    skp.add_argument("--session", default=None)
+    skp.add_argument("--all", dest="all_sessions", action="store_true")
+    skp.add_argument("--rules", default=None)
+    skp.add_argument("--audit-dir", default=DEFAULT_AUDIT_DIR)
+    skp.set_defaults(func=_cmd_sink_push)
+    sks = sk_sub.add_parser("status", help="show how far each session is forwarded")
+    sks.add_argument("--session", default=None)
+    sks.add_argument("--all", dest="all_sessions", action="store_true")
+    sks.add_argument("--rules", default=None)
+    sks.add_argument("--audit-dir", default=DEFAULT_AUDIT_DIR)
+    sks.set_defaults(func=_cmd_sink_status)
 
     return p
 

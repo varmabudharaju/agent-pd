@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 from agent_pd.cli import main, build_parser, _cmd_watch, _cmd_verify
-from agent_pd import integrity, store
+from agent_pd import integrity, store, sink
 
 
 def test_judge_dry_run_reports_estimate(tmp_path, capsys):
@@ -279,6 +279,149 @@ def test_verify_healthy_head_matches(tmp_path, capsys):
     rc = main(["verify", "--session", "healthy", "--audit-dir", str(audit)])
     assert rc == 0
     assert "intact" in capsys.readouterr().out.lower()
+
+
+# ---- pd sink ----
+
+def _unset_sink_env(monkeypatch):
+    for k in ("PD_SINK_TYPE", "PD_SINK_URL", "PD_SINK_PATH",
+              "PD_SINK_TOKEN", "PD_SINK_TIMEOUT"):
+        monkeypatch.delenv(k, raising=False)
+
+
+def test_sink_subcommand_parses():
+    args = build_parser().parse_args(["sink", "push", "--all"])
+    assert args.sink_cmd == "push" and args.all_sessions is True
+    args = build_parser().parse_args(["sink", "status"])
+    assert args.sink_cmd == "status"
+
+
+def test_sink_push_forwards_chained(tmp_path, capsys, monkeypatch):
+    audit = tmp_path / "audit"
+    _write_chained_session(audit, "s1", 3)
+    sinkfile = tmp_path / "sink.ndjson"
+    _unset_sink_env(monkeypatch)
+    monkeypatch.setenv("PD_SINK_TYPE", "file")
+    monkeypatch.setenv("PD_SINK_PATH", str(sinkfile))
+
+    rc = main(["sink", "push", "--session", "s1", "--audit-dir", str(audit)])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "sent 3" in out
+    lines = sinkfile.read_text().splitlines()
+    assert len(lines) == 3
+    assert [json.loads(x)[integrity.SEQ_KEY] for x in lines] == [1, 2, 3]
+
+
+def test_sink_push_idempotent(tmp_path, capsys, monkeypatch):
+    audit = tmp_path / "audit"
+    _write_chained_session(audit, "s1", 3)
+    sinkfile = tmp_path / "sink.ndjson"
+    _unset_sink_env(monkeypatch)
+    monkeypatch.setenv("PD_SINK_TYPE", "file")
+    monkeypatch.setenv("PD_SINK_PATH", str(sinkfile))
+
+    main(["sink", "push", "--session", "s1", "--audit-dir", str(audit)])
+    capsys.readouterr()
+    rc = main(["sink", "push", "--session", "s1", "--audit-dir", str(audit)])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "up to date" in out
+    assert len(sinkfile.read_text().splitlines()) == 3  # unchanged
+
+
+def test_sink_status_up_to_date(tmp_path, capsys, monkeypatch):
+    audit = tmp_path / "audit"
+    _write_chained_session(audit, "s1", 3)
+    sinkfile = tmp_path / "sink.ndjson"
+    _unset_sink_env(monkeypatch)
+    monkeypatch.setenv("PD_SINK_TYPE", "file")
+    monkeypatch.setenv("PD_SINK_PATH", str(sinkfile))
+    main(["sink", "push", "--session", "s1", "--audit-dir", str(audit)])
+    capsys.readouterr()
+
+    rc = main(["sink", "status", "--session", "s1", "--audit-dir", str(audit)])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "3/3 forwarded" in out
+    assert "up to date" in out
+
+
+def test_sink_status_pending_then_push(tmp_path, capsys, monkeypatch):
+    audit = tmp_path / "audit"
+    _write_chained_session(audit, "s1", 3)
+    sinkfile = tmp_path / "sink.ndjson"
+    _unset_sink_env(monkeypatch)
+    monkeypatch.setenv("PD_SINK_TYPE", "file")
+    monkeypatch.setenv("PD_SINK_PATH", str(sinkfile))
+    main(["sink", "push", "--session", "s1", "--audit-dir", str(audit)])
+    capsys.readouterr()
+
+    # append a 4th chained event continuing the chain
+    events = list(store.iter_events("s1", audit))
+    last = events[-1]
+    e4 = integrity.next_link(last[integrity.CHAIN_KEY], last[integrity.SEQ_KEY],
+                             {"event": "PostToolUse", "session_id": "s1",
+                              "tool_name": "Read", "tool_input": {"n": 4}})
+    with (audit / "s1.jsonl").open("a", encoding="utf-8") as f:
+        f.write(json.dumps(e4) + "\n")
+
+    rc = main(["sink", "status", "--session", "s1", "--audit-dir", str(audit)])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "3/4 forwarded" in out
+    assert "1 pending" in out
+
+    rc = main(["sink", "push", "--session", "s1", "--audit-dir", str(audit)])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "sent 1" in out
+    assert len(sinkfile.read_text().splitlines()) == 4
+
+
+def test_sink_push_no_sink_configured(tmp_path, capsys, monkeypatch):
+    audit = tmp_path / "audit"
+    _write_chained_session(audit, "s1", 2)
+    _unset_sink_env(monkeypatch)
+    rc = main(["sink", "push", "--session", "s1", "--audit-dir", str(audit)])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "no sink configured" in out.lower()
+
+
+def test_sink_push_all_two_sessions(tmp_path, capsys, monkeypatch):
+    audit = tmp_path / "audit"
+    _write_chained_session(audit, "s1", 2)
+    _write_chained_session(audit, "s2", 3)
+    sinkfile = tmp_path / "sink.ndjson"
+    _unset_sink_env(monkeypatch)
+    monkeypatch.setenv("PD_SINK_TYPE", "file")
+    monkeypatch.setenv("PD_SINK_PATH", str(sinkfile))
+    rc = main(["sink", "push", "--all", "--audit-dir", str(audit)])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "s1" in out and "s2" in out
+    assert len(sinkfile.read_text().splitlines()) == 5
+
+
+def test_sink_push_failure_rc2_no_advance(tmp_path, capsys, monkeypatch):
+    audit = tmp_path / "audit"
+    _write_chained_session(audit, "s1", 3)
+    _unset_sink_env(monkeypatch)
+    # http sink pointing at a dead port
+    monkeypatch.setenv("PD_SINK_TYPE", "http")
+    monkeypatch.setenv("PD_SINK_URL", "http://127.0.0.1:1")
+    monkeypatch.setenv("PD_SINK_TIMEOUT", "2")
+
+    rc = main(["sink", "push", "--session", "s1", "--audit-dir", str(audit)])
+    assert rc == 2
+    out = capsys.readouterr().out
+    assert "FAILED" in out
+    # state NOT advanced
+    assert sink.read_forwarded_seq("s1", audit) == 0
+    rc = main(["sink", "status", "--session", "s1", "--audit-dir", str(audit)])
+    assert rc == 0
+    assert "0/3 forwarded" in capsys.readouterr().out
 
 
 def test_compact_with_prune_older_than(tmp_path, capsys):
