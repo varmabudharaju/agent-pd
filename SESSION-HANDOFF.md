@@ -1,150 +1,168 @@
 # Session handoff — agent-pd
 
-**Prepared:** 2026-06-03 · **Repo:** `/Users/varma/agent-pd` (GitHub `varmabudharaju/agent-pd`, branch `master`)
-**State:** `master` @ `a65ec0e` · **104 commits** · **392 tests passing** · 6 detectors · working tree clean
-(only this file is untracked). **3 feature PRs merged this session** (#4, #5, #6).
+**Prepared:** 2026-06-03 · **Repo:** `/Users/varma/agent-pd` (GitHub `varmabudharaju/agent-pd`, `master`)
+**State:** `master` @ `815a928` · **110 commits** · **434 tests passing** · 6 detectors · tree clean.
 
-This captures what we did and decided so a new session can continue without re-deriving context.
-For the project's architecture/mental-model read `HANDOFF.md`; for the security posture read
-`SECURITY.md`; for deferred work + heuristic limits read `KNOWN-GAPS.md`.
+agent-pd is a **catch-and-report watchdog** for Claude Code agent activity (main + subagents): it
+records every tool call via a hook, then flags misbehavior (out-of-scope/sensitive access,
+permission bypass, an agent editing its own config, disallowed-tool use, off-task work). It
+DETECTS and REPORTS; it never blocks.
 
----
+**Status note:** there are **no known *unfixed* bugs** — every bug found by this session's audits
+and adversarial reviews was fixed with a regression test. The "Open work" below is **documented
+limitations, enhancements, and one pre-public validation** — not latent defects. Items are scoped
+so a fresh session can pick any one up cold.
 
-## What this session did (3 PRs, in order)
-
-### PR #4 — `feat/audit-storage-compaction` (gzip-only) — merged
-Goal: make the audit log scalable for long-term bookkeeping/autopsy.
-- New `agent_pd/store.py` owns ALL on-disk-layout knowledge. New `pd compact` gzips inactive
-  session logs (`<sid>.jsonl` → `<sid>.jsonl.gz`), skipping the most-recently-modified (active)
-  session. `pd report`/`pd watch`/`pd list` read both formats transparently via
-  `store.iter_events`. Optional `--prune-older-than DAYS` (default: keep everything).
-- **The pivot (important):** we first built a content-addressed **blob store** that externalized
-  bulky `tool_input` strings. A final adversarial review caught that those exact fields
-  (`content`/`new_string`/Bash `command`) are **detector-read**, so externalizing them made
-  `pd compact` silently DROP real critical offenses — "provably lossless" was FALSE. We pivoted to
-  **gzip-only** (every field stays inline → trivially lossless; ~5–10× on JSON text). Full history
-  preserved on master (the blob commits → the pivot). Rationale in the design-doc revision history.
-- Real-data check: a copy of `~/.claude/pd` went 1.7 MB → 436 KB with identical report output.
-
-### PR #5 — `fix/security-hardening` — merged
-Goal: close UNDER-flagging holes (the cardinal sin for a watchdog). Found via a 4-agent parallel
-adversarial audit (permissions / hook-data-integrity / detector-evasion / red-team), each finding
-backed by a runnable repro; fixed one batch at a time (TDD), then an adversarial whole-branch
-review, then an independent verification sweep (which itself found one more — `/etc/shadow`).
-- **permissions matching** now faithful to Claude Code: shell-operator split (a `Bash(git:*)` rule
-  no longer permits `git status && rm -rf ~`), `$(...)`/backtick extraction, redirect targets
-  treated separately (a command rule can't authorize `> ~/.ssh/authorized_keys`), word-boundary
-  (`npm install:*` ≠ `npm installmalware`), gitignore-style globs (`*` ≠ cross `/`), conservative
-  bias (ambiguity → NOT permitted).
-- **Sensitive paths are never downgraded** to `info` by allow-rules. System credential files
-  (`/etc/shadow`, `/etc/passwd`, `/etc/sudoers`, `/etc/ssh`, `/root`, shell history) and `~/.claude`
-  (incl. the pd audit dir) added to the sensitive list.
-- **self_permission** reframed: flags ANY agent write to its own control files
-  (`.claude/settings*.json`, `.claude/agents/*.md`, `pd-rules*.yaml`) via ANY method
-  (Write/Edit/NotebookEdit, or Bash cp/mv/tee/sed/python/base64/redirect/bare-name), regardless of
-  content. Closes hook-removal + opaque-write evasions.
-- **scope/out_of_scope** recurses into interpreter one-liners (`bash -c`, `python3 -c`, `node -e`),
-  expands single-level `$VAR`, follows symlinks (best-effort), catches bare-basename sensitive files
-  inside scripts.
-- **permission_bypass** is now a regex engine with TWO tiers: `never_downgrade_patterns`
-  (catastrophic — `rm -rf /` incl. long-flag/quoted forms, `rm -rf ~`/`$HOME`, `--no-preserve-root`,
-  fork bomb, `dd of=/dev/`, `mkfs`, `curl|sh`) stay critical even under a broad allow-rule;
-  `escalation_patterns` (sudo, chmod 777/setuid, chown root, shred, cwd-wipe `rm -rf .`/`*`)
-  downgradable only by a PRECISE allow-rule (a bare `Bash` is not precise enough). Routine
-  `rm -rf ./build` is not flagged.
-- **hook** captures `denial_reason`, `tool_result`, `permission_mode`, `transcript_path`, and an
-  `_extra` passthrough for unknown fields; forces `decision=deny` on `PermissionDenied`; logs errors
-  to stderr; still always exits 0. **store.iter_events** dedups across the gz/plain compaction window
-  (no double-counted offenses). `agent_type` allowlist lookup is case-insensitive.
-
-### PR #6 — `feat/audit-integrity` — merged
-Goal: make audit-log tampering DETECTABLE. New `agent_pd/integrity.py` + `pd verify`.
-- Each event gains `seq` (monotonic/session) + `chain = sha256(prev_chain + canonical(event))`, or
-  HMAC-SHA256 when `PD_AUDIT_KEY` is set. Computed by the hook under a **per-session flock** (correct
-  under parallel subagents), with a `<sid>.head.json` anchor. Hook stays crash-safe (always exit 0,
-  never loses an event, head-write failure is benign).
-- `pd verify [--session ID] [--all]` recomputes the chain; rc 0 intact / rc 2 tamper|truncation.
-  Detects edits, reordering, mid-deletion, tail truncation, inserted unchained lines, stale-head
-  re-chain, and (with HMAC) edits by anyone without the key. **Verifies across `pd compact`.**
-- **Honest framing (kept everywhere):** tamper-EVIDENT, not tamper-PROOF. A same-user agent that
-  knows the scheme and can read `PD_AUDIT_KEY` can re-chain the whole log and pass `pd verify`. True
-  tamper-proofing needs an off-host append-only sink (see "pick up next").
+Canonical companion docs (keep them authoritative; this file is the work-queue view):
+- `HANDOFF.md` — architecture / mental model / detector table.
+- `SECURITY.md` — threat model + honest limitations (public-facing).
+- `KNOWN-GAPS.md` — full shipped/residual/declined ledger (more detail than this file).
 
 ---
 
-## Key decisions & rationale (so we don't relitigate)
+## 60-second orientation
 
-- **gzip-only compaction, not blob externalization** — the bulky fields are detector-read, so
-  externalizing them isn't lossless for detection. "100% correct detection" is a hard requirement.
-- **Under-flagging is worse than over-flagging** for a watchdog. Matching is faithful to CC with a
-  conservative bias (ambiguity → not permitted = stays flagged). Sensitive paths + catastrophic
-  commands are NEVER downgraded.
-- **self_permission = "any write to own control files"**, not "permission-keyword present" — the old
-  narrow rule was the hook-removal hole.
-- **Audit integrity is tamper-evident, not tamper-proof** — stated honestly; we explicitly did NOT
-  oversell it (same mistake as the original "provably lossless" claim we had to retract).
-- **Catch-and-report only** — the hook never blocks; always exit 0.
+**Flow:** `hook.py` (runs per tool call, always exit 0) → appends a chained event to
+`~/.claude/pd/audit/<sid>.jsonl` → `store.iter_events` reads it (transparently handles
+`.jsonl` + gzipped `.jsonl.gz`) → `investigator.gather` builds per-agent `AgentRecord`s →
+`detectors/` flag offenses → `report.py`/`render.py` (forensic `pd report`) and `live.py`
+(live `pd watch`).
 
-## Working conventions (IMPORTANT — repeat these)
+**Commands:** `pd report` · `pd watch` · `pd list` · `pd judge` (LLM off_task verdicts) ·
+`pd compact` (gzip old sessions) · `pd verify` (hash-chain tamper check) ·
+`pd sink push|status` (forward off-host) · `pd install-hook`.
 
-- **Commit author:** `varma <sairam.vzf33@gmail.com>`. **NO AI-attribution trailers** — the repo
-  forbids `Co-Authored-By: Claude` / "Generated with"; subagents sometimes add them. Verify each
-  branch before merge: `git log <base>..HEAD --format=%B | grep -i "co-authored\|generated with"`
-  must be empty.
-- **Landing:** branch → push → `gh pr create --body-file <file>` (inline heredocs break on
-  apostrophes/backticks) → `gh pr merge <branch> --rebase --delete-branch`. **Rebase-merge, never
-  squash** — the user wants each feature-wise commit preserved on `master` (contribution graph).
-  Direct `git push origin master` is blocked; the PR-merge path works.
-  - Local-merge gotcha: a rebase-merge rewrites SHAs, so after merge `git pull --ff-only` FAILS
-    (local master diverged). Fix: `git fetch origin && git reset --hard origin/master`.
-- **Dev workflow used each PR:** parallel adversarial audit / brainstorming → writing-plans (bite-
-  sized TDD) → subagent-driven-development (fresh implementer per task + spec/quality review) →
-  **adversarial final review (use the opus model)** → independent verification sweep → PR. The
-  adversarial reviews repeatedly caught real bugs the implementers/I missed — keep doing them.
-- Recorded in memory: `~/.claude/projects/-Users-varma-agent-pd/memory/agent-pd-commit-workflow.md`.
+**Code map (`agent_pd/`):** `hook.py` (recorder + hash-chain), `integrity.py` (chain core +
+head/lock helpers), `sink.py` (off-host forwarder: file/http), `store.py` (gzip compaction +
+transparent reads), `investigator.py` (`gather`), `live.py` (`watch`), `detectors/` (6:
+permission_bypass, out_of_scope, redundant, off_task, self_permission, tool_scope),
+`scope.py` (path extraction/classification), `permissions.py` (allow-rule matching →
+`info` downgrade), `agents_def.py` (subagent tool allowlists), `config.py`, `models.py`,
+`report.py`, `render.py`, `summary.py`, `judge.py`, `cli.py`, `install_hook.py`.
 
-## How to test it by hand (verified recipes)
+**Key invariants (don't regress):**
+- The hook NEVER blocks and ALWAYS exits 0; it never loses an event (unchained fallback).
+- Detection is faithful: **under-flagging is worse than over-flagging**; ambiguity → not
+  permitted (stays flagged). Sensitive paths + catastrophic commands are NEVER downgraded.
+- `pd compact` is gzip-only and **lossless for detection** (no field externalization — that was
+  tried and reverted; see KNOWN-GAPS "declined").
+
+---
+
+## Working conventions (REPEAT THESE — they're load-bearing)
+
+- **No AI-attribution trailers** in commits (`Co-Authored-By: Claude` / "Generated with"). Verify
+  before merge: `git log <base>..HEAD --format=%B | grep -i "co-authored\|generated with"` empty.
+- **Land via branch → push → `gh pr create --body-file` → `gh pr merge <b> --rebase
+  --delete-branch`.** Rebase-merge, never squash (preserve per-commit history / contribution
+  graph). Direct `git push origin master` is blocked.
+  - **Gotcha:** rebase-merge rewrites SHAs, so after merge `git pull --ff-only` FAILS. Sync with
+    `git fetch origin && git reset --hard origin/master`.
+- **Dev flow that worked all session:** (parallel adversarial audit / design) → TDD batches via
+  fresh subagents → **adversarial final review using the opus model** → independent verification
+  sweep → PR. The adversarial reviews repeatedly caught real bugs (incl. two credential-leak-class
+  issues) — KEEP doing them; don't skip the opus review or the manual sweep.
+- **Test discipline:** at least one test per hook-fed path must use a **realistic** payload (the
+  shape Claude Code actually sends), not a convenient fabricated one. (A prior denial bug survived
+  for exactly this reason.)
+- Memory: `~/.claude/projects/-Users-varma-agent-pd/memory/agent-pd-commit-workflow.md`.
+
+## Hand-test recipes
 
 ```bash
-python3 -m pytest -q                                   # 392 passing
-python3 -c "from agent_pd.detectors import DETECTORS; print(list(DETECTORS))"  # 6 detectors
-python3 -m agent_pd.cli list                           # real recorded sessions
+python3 -m pytest -q                                   # 434 passing
+python3 -c "from agent_pd.detectors import DETECTORS; print(list(DETECTORS))"   # 6
 python3 -m agent_pd.cli report --format md | head -40
-python3 -m agent_pd.cli compact --dry-run              # then drop --dry-run to gzip old sessions
-python3 -m agent_pd.cli verify --all                   # hash-chain integrity (rc 2 on tamper)
+python3 -m agent_pd.cli compact --dry-run              # then drop --dry-run
+python3 -m agent_pd.cli verify --all                   # rc 2 on tamper
+PD_SINK_TYPE=file PD_SINK_PATH=/tmp/pd.ndjson python3 -m agent_pd.cli sink push --all
 ```
-Live tamper demo: run the hook 3× for a test session, `pd verify` → intact; edit a middle line on
-disk; `pd verify` → `✗ TAMPER DETECTED — chain breaks at seq 2 (bad-link)` rc 2. (We verified this.)
 
-## Honest current state for PUBLIC release (see SECURITY.md / KNOWN-GAPS.md)
-The product is substantially more correct/reliable than at session start (155 → 392 tests; every
-exploit the audits+reviews+sweep found is closed and regression-tested). NOT claimed "bug-free."
-Documented residual limits:
-- Static analysis can't beat obfuscation/indirection: multi-level `$VAR`, `$IFS`/word-split,
-  two-step `curl -o; sh`, base64/eval-assembled commands.
-- Only Write/Edit/NotebookEdit + Bash are inspected for control-file writes (MCP filesystem tools
-  could bypass self_permission). Symlink resolution is best-effort. `tool_result` stored verbatim
-  (gzip mitigates). off_task is heuristic (`pd judge`); `~/.config` sensitivity is broad.
-- Audit integrity is tamper-EVIDENT only (same-user re-chain defeats it).
-Pre-public checklist still open: **add a LICENSE file**; validate the `PermissionDenied`/`tool_result`
-field names against a real Claude Code denial (event names confirmed by recorded data; enrichment
-fields are doc-sourced — see the claude-code-guide notes in the conversation).
+---
 
-## Open items / where to pick up next
-- **Off-host append-only sink** — the one thing that makes the audit log truly tamper-PROOF against a
-  same-user agent (the user flagged interest; it's the biggest remaining architectural gap). Options:
-  mirror events to a different mount / syslog / an HTTP endpoint. Bigger scope, external dep.
-- **LICENSE** for public release (MIT/Apache-2.0) — quick but blocking for others to use it.
-- Confirm real `PermissionDenied` payload fields against a live denial (set a deny rule, trigger it,
-  read the recorded line — the `_extra` passthrough now captures anything we didn't map).
-- Lower-priority documented residuals above (truncate `tool_result`, MCP-tool coverage, etc.).
+## OPEN WORK (prioritized — pick any item cold)
 
-## Pointers
-- Specs: `docs/superpowers/specs/2026-06-0{1,2,3}-*.md` (the 2026-06-03 storage spec has the
-  gzip-only pivot in its revision history). Plans: `docs/superpowers/plans/`.
-- `SECURITY.md` — threat model + honest limitations (public-facing). `HANDOFF.md` — mental model +
-  detector table. `KNOWN-GAPS.md` — shipped/residual/deferred.
-- Code map: `agent_pd/` — `hook.py` (recorder + chain), `integrity.py` (hash-chain core + head/lock),
-  `store.py` (gzip compaction + transparent reads), `investigator.py` (`gather`), `live.py`
-  (`watch`), `detectors/` (6), `scope.py`, `permissions.py`, `agents_def.py`, `summary.py`,
-  `report.py`, `render.py`, `judge.py`, `config.py`, `models.py`, `cli.py`.
+Legend: 🔴 do before public · 🟠 correctness/quality improvement · 🟢 enhancement/backlog ·
+⚪ accepted limitation (document, likely won't "fix")
+
+### 🔴 P0 — pre-public validation
+1. **Validate the real `PermissionDenied` + `PostToolUse` payloads against a LIVE Claude Code run.**
+   - Where: `hook.py` `build_event` (field mapping), `tests/test_hook.py`.
+   - Why: field names (`denial_reason`, `tool_result`, `permission_mode`, snake_case) are
+     doc-sourced + corroborated by recorded data, but only `PermissionDenied` fired once ever in
+     real data. The `_extra` passthrough already captures anything we didn't map (low risk), but
+     for a security product the deny→critical + reason enrichment path should be confirmed end-to-end.
+   - Approach: set a `deny` permission rule, trigger a real denial, read the recorded line; confirm
+     `decision=deny` + `reason` populated; add a realistic-payload regression test. Size: S.
+   - Note: `LICENSE` (Apache-2.0) is DONE; copyright holder is `varma` — change to your full legal
+     name / company entity in `LICENSE` if this becomes a venture (the holder is who owns it).
+
+### 🟠 Correctness / quality improvements
+2. **MCP / non-Bash file-write tools bypass `self_permission`.**
+   - Where: `detectors/self_permission.py` (only inspects Write/Edit/NotebookEdit + Bash).
+   - Why: a filesystem MCP tool with a different tool name could write `.claude/settings.json`
+     undetected.
+   - Approach: make the control-file check tool-agnostic — flag ANY tool whose input names a
+     control path in a write-shaped field; or a configurable `write_tools` set. Size: M.
+3. **Multi-level `$VAR` indirection not resolved** (`A=/etc/shadow; B=$A; cat $B`).
+   - Where: `scope.py` (`_subst_var` / assignment tracking — currently single-level).
+   - Why: a 2-hop variable hides a sensitive path from `out_of_scope`.
+   - Approach: iterate variable substitution to a fixed point (cap iterations); only literal
+     assignments. Size: S–M. (Note: `$IFS`/word-split, `$(...)`-built paths, base64/eval remain
+     inherently out of reach — see ⚪ below.)
+4. **`tool_result` stored verbatim** (can be large — full stdout / file contents).
+   - Where: `hook.py` (capture), optionally `render.py`/`store.py`.
+   - Why: inflates audit lines; gzip compaction mitigates on disk but raw `.jsonl` grows.
+   - Approach: cap/truncate `tool_result` at capture (keep size + a head), or only at the render
+     boundary. Decide whether detectors will ever READ it (currently none do). Size: S.
+5. **`~/.config` is broad for `critical`** (holds innocuous app config → noisy).
+   - Where: `config.py` `DEFAULT_SENSITIVE`.
+   - Approach: narrow to the credential-bearing subpaths (`~/.config/gh`, `~/.config/gcloud`, …)
+     instead of the whole tree, or downgrade `~/.config` to boundary. Size: S.
+6. **Allow-rules read once per agent** (no mid-session reload).
+   - Where: `live.py`/`models.py` (`AgentRecord.allow_rules` loaded at first event).
+   - Why: if the user changes `permissions.allow` mid-session it isn't picked up. Minor.
+   - Approach: re-read on change / per-event (watch perf). Size: S. (Low priority.)
+
+### 🟢 Enhancements / backlog
+7. **Sink: chunk large backlogs.** `sink.push_session` sends ALL pending events in one POST/append.
+   - Where: `sink.py`. Approach: batch by max-N / max-bytes, advance state per chunk. Size: S.
+8. **Sink: syslog backend** (stdlib `logging.handlers.SysLogHandler` → remote syslog = off-host).
+   - Where: `sink.py` `make_sink`. Size: S.
+9. **Sink: read-back reconciliation** `pd verify --against-sink` (fetch the off-host copy, diff vs
+   local) — only if the sink is readable. Where: `cli.py`/`sink.py`. Size: M.
+10. **Judge verdict disk cache** — skip re-judging identical (brief, search) pairs. Where:
+    `judge.py`. Size: S–M.
+11. **`pd summary <session>`** — per-agent digest (files touched, time span, tool histogram).
+    Where: new `cli` cmd + `summary.py`. Size: S.
+12. **Capture more hook events** (`PostToolUseFailure`, `PreCompact`, `SessionEnd`) to enrich the
+    timeline. Where: hook is event-agnostic already; just ensure they flow through. Size: S.
+    (`tool_result` outcome capture is already DONE.)
+
+### ⚪ Accepted limitations (document, not "bugs" — see SECURITY.md)
+- **Obfuscation/indirection evades static detection:** `$IFS`/word-split, two-step
+  `curl -o f; sh f`, base64/eval-assembled commands, dynamically-built paths. pd raises the bar;
+  it is **not a sandbox**. A determined same-privilege adversary can evade pattern matching.
+- **Symlink resolution is best-effort** (symlink must exist at analysis time).
+- **`off_task` is heuristic** (word-overlap); `pd judge` is the trustworthy path. Can't run on the
+  main agent (no brief).
+- **Audit integrity is tamper-EVIDENT, not tamper-PROOF.** Even with the off-host sink, the
+  same-user agent holds the write credential → it can **forge** entries into the sink and can
+  **disable the hook** (a gap, not a deletion). The sink only guarantees a genuine event already
+  shipped off-host can't be retroactively deleted — AND only if the destination is genuinely
+  append-only with non-deleting creds (a deployment requirement pd can't enforce). This is the
+  realistic ceiling for this threat model; don't let anyone re-frame it as "tamper-proof."
+- **Sessions predating the hook** (transcript-only, no `<sid>.jsonl`) don't appear in `pd report`.
+
+---
+
+## Session history (how we got here — 6 PRs, tests 155 → 434)
+- **#4 `feat/audit-storage-compaction`** — `pd compact` gzip-only (pivoted away from a blob store
+  that broke detection-losslessness; full story in the design-doc revision history).
+- **#5 `fix/security-hardening`** — closed a class of under-flagging holes across permissions,
+  self_permission, scope, permission_bypass, hook capture (10 fix commits).
+- **#6 `feat/audit-integrity`** — hash-chain + `pd verify` (tamper-evident).
+- **#7** — prior handoff. **#8** — Apache-2.0 `LICENSE` + metadata.
+- **#9 `feat/audit-sink`** — off-host forwarder `pd sink push/status` (file/http).
+
+Pointers: specs in `docs/superpowers/specs/`, plans in `docs/superpowers/plans/`.
