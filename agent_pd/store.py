@@ -90,6 +90,8 @@ def iter_events(session_id, audit_dir):
     """Yield parsed events for a session, reading <sid>.jsonl.gz if present, else
     <sid>.jsonl. If BOTH exist (compaction/append race), yield gz events first then the
     plain-text lines. Blank/partial lines are skipped."""
+    # Reads each file fully into memory: intended for offline report/compaction, not
+    # live tailing (live.py has its own incremental tail reader).
     audit_dir = Path(audit_dir)
     gz = audit_dir / f"{session_id}.jsonl.gz"
     plain = audit_dir / f"{session_id}.jsonl"

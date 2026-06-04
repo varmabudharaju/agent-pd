@@ -2,6 +2,8 @@
 import gzip
 import hashlib
 import json
+import os
+import time
 from pathlib import Path
 
 from agent_pd import store
@@ -120,7 +122,6 @@ def test_iter_events_tolerates_blank_and_bad_lines(tmp_path):
 def test_latest_session_considers_both_extensions(tmp_path):
     _write_jsonl(tmp_path / "old.jsonl", [{"i": 1}])
     _write_jsonl_gz(tmp_path / "new.jsonl.gz", [{"i": 2}])
-    import os, time
     old = time.time() - 100
     os.utime(tmp_path / "old.jsonl", (old, old))
     assert store.latest_session(tmp_path) == "new"
@@ -131,3 +132,14 @@ def test_list_sessions_dedups_both_extensions(tmp_path):
     _write_jsonl_gz(tmp_path / "b.jsonl.gz", [{"i": 2}])
     (tmp_path / "a.jsonl.gz").write_bytes(gzip.compress(b'{"i": 3}\n'))
     assert store.list_sessions(tmp_path) == ["a", "b"]
+
+
+def test_iter_events_missing_session_yields_nothing(tmp_path):
+    # no files for this session -> empty iterator, no exception
+    assert list(store.iter_events("nope", tmp_path)) == []
+
+
+def test_list_sessions_missing_dir_is_empty(tmp_path):
+    missing = tmp_path / "does-not-exist"
+    assert store.list_sessions(missing) == []
+    assert store.latest_session(missing) is None
