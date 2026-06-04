@@ -133,10 +133,11 @@ def _verify_one(sid, audit_dir) -> tuple[int, str]:
         return 2, (f"✗ TAMPER DETECTED — chain breaks at seq "
                    f"{result['broken_at']} ({result['reason']})")
 
-    # last verified seq = max seq among chained events, else 0
-    last_seq = max((e[integrity.SEQ_KEY] for e in events
-                    if integrity.SEQ_KEY in e), default=0)
-    _, head_seq = integrity.read_head(sid, audit_dir)
+    # last verified seq/chain = the last chained event's seq and chain, else (0, None)
+    chained = [e for e in events if integrity.SEQ_KEY in e]
+    last_seq = max((e[integrity.SEQ_KEY] for e in chained), default=0)
+    last_chain = chained[-1][integrity.CHAIN_KEY] if chained else None
+    head_hex, head_seq = integrity.read_head(sid, audit_dir)
 
     if result["verified"] == 0 and head_seq == 0:
         return 0, ("⚠ no integrity data — this session predates "
@@ -146,6 +147,13 @@ def _verify_one(sid, audit_dir) -> tuple[int, str]:
         missing = head_seq - last_seq
         return 2, (f"✗ TRUNCATED — head recorded seq {head_seq} but log ends "
                    f"at seq {last_seq} ({missing} event(s) missing from the tail)")
+
+    # Head-anchor check: catch a tail rewrite where the chain was re-computed but the
+    # head was left stale. Only compare when seqs are EQUAL — a lagging head
+    # (head_seq < last_seq, the crash-before-head case) is benign and skips this.
+    if head_seq == last_seq and head_seq != 0 and head_hex != last_chain:
+        return 2, ("✗ TAMPER DETECTED — head anchor does not match the log tail "
+                   "(chain was rewritten)")
 
     msg = f"✓ chain intact — {result['verified']} event(s) verified"
     if result["legacy"]:
