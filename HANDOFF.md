@@ -6,7 +6,7 @@ tool/permission event; a CLI audits those logs and reports rule offenses with ev
 
 - **Repo:** https://github.com/varmabudharaju/agent-pd (branch `master`)
 - **Local:** `/Users/varma/agent-pd` · Python 3.11 (use `python3`) · CLI: `pd`
-- **State at handoff:** 194 tests passing, working tree clean, all pushed.
+- **State at handoff:** 182 tests passing, working tree clean, all pushed.
 - **Author policy:** all commits under `varma <sairam.vzf33@gmail.com>` — **no Co-Authored-By / no Claude or Anthropic attribution** in commits or PRs.
 
 ---
@@ -86,11 +86,11 @@ pd judge                             # dry run (free) — shows the estimate
 pd judge --run --via-claude-code     # judge on your subscription
 pd judge --run --model sonnet --max 20   # metered API backend
 
-pd compact [--session ID] [--threshold BYTES] [--prune-blobs-older-than DAYS] [--max-blob-bytes N] [--dry-run]
-                                     # compress old sessions; externalize bulky tool-input payloads
-                                     # into a content-addressed blob store (skips the active session;
-                                     # lossless for detection; blobs recoverable via pd show)
-pd show --blob SHA                   # print the full original content of a stored blob
+pd compact [--session ID] [--prune-older-than DAYS] [--dry-run]
+                                     # gzip old session logs (<sid>.jsonl -> <sid>.jsonl.gz), skips the
+                                     # most-recently-modified (active) session; lossless for detection
+                                     # (every field stays inline). --prune-older-than DAYS optionally
+                                     # deletes compacted sessions older than N days (default: keep all)
 ```
 
 ## File map
@@ -110,9 +110,9 @@ agent_pd/
   config.py         # Rules + load_rules() (pd-rules.yaml deep-merged over defaults)
   models.py         # Action, AgentRecord, Offense dataclasses
   install_hook.py   # idempotent settings.json hook registration
-  store.py          # shrink_value, blob store (get/put), iter_events, compact_session/compact_all/compact_targets, prune_blobs
-  cli.py            # argparse: report/list/install-hook/watch/judge/compact/show
-tests/              # 194 tests, pure (no API key needed — judge uses injected fake clients)
+  store.py          # gzip-only audit compaction + transparent .jsonl/.jsonl.gz reading (iter_events, compact_session/compact_all/compact_targets, prune_sessions)
+  cli.py            # argparse: report/list/install-hook/watch/judge/compact
+tests/              # 182 tests, pure (no API key needed — judge uses injected fake clients)
 pd-rules.yaml       # user-editable rules
 docs/superpowers/   # specs + the original implementation plan
 ```
@@ -123,7 +123,7 @@ docs/superpowers/   # specs + the original implementation plan
 cd ~/agent-pd
 pip install --user -e .          # core (zero runtime deps but PyYAML)
 pip install --user -e ".[judge]" # + anthropic SDK (only for the API judge backend)
-python3 -m pytest -q             # 194 tests
+python3 -m pytest -q             # 182 tests
 ```
 
 TDD throughout; detectors/render/live/judge are all unit-tested with no network.
@@ -168,14 +168,16 @@ TDD throughout; detectors/render/live/judge are all unit-tested with no network.
 
 ```
 ~/.claude/pd/
-  audit/<sid>.jsonl       # live / active session (hook appends here)
+  audit/<sid>.jsonl       # live capture (hook appends here)
   audit/<sid>.jsonl.gz    # compacted session (pd compact rewrites in place, gzip)
-  blobs/<ab>/<sha>.gz     # content-addressed bulk payloads (tool-input fields > threshold)
 ```
 
-`pd compact` skips the most-recently-modified session (the active one) so the hook can
-always append. Compaction is lossless for detection — detectors never read raw blob bytes.
-`pd show --blob <sha>` rehydrates any blob for deep autopsy.
+Two on-disk forms only — no blob store. `pd compact` skips the most-recently-modified
+session (the active one) so the hook can always append. Compaction is lossless for
+detection: every field stays inline, so detection over a compacted session is identical to
+the raw session. Reads (`pd report`, `pd watch`) transparently handle both `.jsonl` and
+`.jsonl.gz` via `store.iter_events`. `--prune-older-than DAYS` optionally hard-deletes
+compacted sessions older than N days (default: keep everything).
 
 ## Reset to a clean slate (optional)
 

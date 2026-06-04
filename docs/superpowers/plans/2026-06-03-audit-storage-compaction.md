@@ -1,5 +1,7 @@
 # Audit Storage Compaction Implementation Plan
 
+> **SUPERSEDED (2026-06-03):** Tasks 1–11 below describe the original blob-externalization design. After review found that externalizing detector-read fields breaks detection-losslessness, the feature shipped as GZIP-ONLY. See the design doc's revision history and the actual code in agent_pd/store.py. The store/iter_events/compact_session/compact_all/compact_targets structure survived; shrink_value/blob_path/put_blob/get_blob/prune_blobs and pd show were dropped.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make audit storage scalable by adding an offline, idempotent `pd compact` pass that gzips old session logs and externalizes bulky `tool_input` strings into a content-addressed, deduped, compressed blob store — losslessly for detection, recoverable until pruned.
