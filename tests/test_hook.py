@@ -292,3 +292,33 @@ def test_write_event_concurrent_no_dup_seq(tmp_path):
     seqs = sorted(e[SEQ_KEY] for e in evs)
     assert seqs == list(range(1, N + 1)), seqs  # exactly 1..N, no dups/gaps
     assert verify_events(evs)["ok"] is True
+
+
+def test_build_event_real_recorded_denial_shape():
+    """Validated against a REAL recorded PermissionDenied (session 29f86214, 2026-06-02):
+    the live Claude Code payload had NO explicit decision field and carried the reason under
+    `reason` (not the doc-claimed `denial_reason`). This locks in that build_event handles the
+    real shape: deny is inferred from the event name, the reason is captured, main-agent fields
+    are empty, and nothing the watchdog needs lands in _extra."""
+    payload = {
+        "hook_event_name": "PermissionDenied",
+        "session_id": "29f86214-da2a-4715-9e46-47ab92c92bb9",
+        "tool_name": "Bash",
+        "tool_input": {
+            "command": "git push origin master",
+            "description": "FF-merge master and push to origin",
+        },
+        "reason": ("Direct push to the default branch (master) bypasses PR review; "
+                   "the user never specifically authorized pushing directly to master."),
+        "cwd": "/Users/varma/agent-pd",
+        # NB: no permissionDecision/decision/denial_reason key — matches the observed real event.
+    }
+    ev = build_event(payload)
+    assert ev["event"] == "PermissionDenied"
+    assert ev["decision"] == "deny"          # inferred from the event name
+    assert ev["reason"].startswith("Direct push to the default branch")
+    assert ev["tool_name"] == "Bash"
+    assert ev["tool_input"]["command"] == "git push origin master"
+    assert ev["agent_id"] == "" and ev["agent_type"] == ""   # main agent
+    assert ev["cwd"] == "/Users/varma/agent-pd"
+    assert "_extra" not in ev                 # every field in the real shape is mapped

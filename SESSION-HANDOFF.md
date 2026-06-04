@@ -85,17 +85,23 @@ PD_SINK_TYPE=file PD_SINK_PATH=/tmp/pd.ndjson python3 -m agent_pd.cli sink push 
 Legend: 🔴 do before public · 🟠 correctness/quality improvement · 🟢 enhancement/backlog ·
 ⚪ accepted limitation (document, likely won't "fix")
 
-### 🔴 P0 — pre-public validation
-1. **Validate the real `PermissionDenied` + `PostToolUse` payloads against a LIVE Claude Code run.**
-   - Where: `hook.py` `build_event` (field mapping), `tests/test_hook.py`.
-   - Why: field names (`denial_reason`, `tool_result`, `permission_mode`, snake_case) are
-     doc-sourced + corroborated by recorded data, but only `PermissionDenied` fired once ever in
-     real data. The `_extra` passthrough already captures anything we didn't map (low risk), but
-     for a security product the deny→critical + reason enrichment path should be confirmed end-to-end.
-   - Approach: set a `deny` permission rule, trigger a real denial, read the recorded line; confirm
-     `decision=deny` + `reason` populated; add a realistic-payload regression test. Size: S.
-   - Note: `LICENSE` (Apache-2.0) is DONE; copyright holder is `varma` — change to your full legal
-     name / company entity in `LICENSE` if this becomes a venture (the holder is who owns it).
+### ✅ P0 — pre-public validation (DONE 2026-06-04)
+1. **`PermissionDenied` payload validated against a real recorded denial.**
+   - Evidence: a genuine recorded denial (session `29f86214`, 2026-06-02 — the auto-mode classifier
+     blocking a direct `git push origin master`) confirms the deny→critical path on real data:
+     `decision=deny` set, `reason` captured, `tool_name`/`tool_input`/`cwd` correct, main-agent
+     fields empty. Locked in as `tests/test_hook.py::test_build_event_real_recorded_denial_shape`.
+   - **Finding:** the real CC reason field is **`reason`** (the only key the pre-`_extra` hook mapped,
+     and it captured the reason) — **NOT** the doc-claimed `denial_reason`. Our mapping reads all
+     three (`denial_reason`→`reason`→`permissionDecisionReason`) so it's correct regardless; comment
+     in `hook.py` corrected to say so.
+   - **Caveat (honest):** the hook normalizes, so the *complete* raw field set isn't fully
+     observable, and a fresh denial couldn't be forced in autonomous mode (a no-op `git push` is
+     allowed, not denied). The `_extra` passthrough now captures any unmapped field on the **next**
+     live denial — so the tool can no longer silently miss a schema change. If you later get a real
+     denial, run `pd report`/inspect its audit line for a populated `_extra` to confirm nothing new.
+   - `LICENSE` (Apache-2.0) is DONE; copyright holder is `varma` — change to your full legal name /
+     company entity in `LICENSE` if this becomes a venture (the holder is who owns it).
 
 ### 🟠 Correctness / quality improvements
 2. **MCP / non-Bash file-write tools bypass `self_permission`.**

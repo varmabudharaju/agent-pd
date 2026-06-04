@@ -57,7 +57,11 @@ def build_event(payload: dict) -> dict:
         "tool_input": _first(payload, "tool_input", "toolInput", default={}),
         "decision": _first(payload, "permissionDecision", "decision",
                            "permission_decision"),
-        # denial_reason is the authoritative CC field for PermissionDenied; read it first.
+        # Reason field: a REAL recorded PermissionDenied (2026-06-02) carried the reason under
+        # `reason` (the only key the pre-_extra hook mapped, and it captured it) — so the live
+        # CC field is `reason`/`permissionDecisionReason`, NOT the doc-claimed `denial_reason`.
+        # We read all three (superset) so we're correct whichever it is; `denial_reason` stays a
+        # harmless first-check, and `_extra` below surfaces any new variant on the next denial.
         "reason": _first(payload, "denial_reason", "reason", "permissionDecisionReason"),
         "cwd": _first(payload, "cwd", default=""),
         # tool_result is the OUTCOME of a PostToolUse action (stdout/error/etc).
