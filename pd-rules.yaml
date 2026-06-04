@@ -19,11 +19,28 @@ sensitive_patterns:                  # always flagged (critical) even inside the
   - ".pypirc"
   - ".git-credentials"
   - "*.keychain"
-escalation_patterns:
-  - dangerouslyDisableSandbox
-  - "sudo "
-  - "chmod 777"
-  - "rm -rf /"
+# Escalation patterns are case-insensitive regexes (re.search) matched against the
+# Bash command. Listing either key here REPLACES the built-in defaults (deep-merge
+# replaces lists), so include the built-ins you still want. Omit both keys to use defaults.
+# escalation_patterns: escalation a PRECISE allow-rule may legitimately downgrade to info.
+# escalation_patterns:
+#   - '\bsudo\b'
+#   - '\bdoas\b'
+#   - '\bchmod\s+(?:-\S+\s+)*[0-7]*7{2,}[0-7]*\b'   # 777-ish
+#   - '\bchmod\s+[0-7]*[4-7][0-7]{3}\b'             # setuid/setgid high bit
+#   - '\bchmod\s+\S*\+s\b'                          # setuid symbolic
+#   - '\bchown\s+root\b'
+#   - '\bshred\b'
+# never_downgrade_patterns: categorically dangerous; always critical, never downgraded.
+# never_downgrade_patterns:
+#   - '\brm\s+(?:-\S+\s+)*-?[a-z]*r[a-z]*f[a-z]*\b.*(?:/|~|\$HOME|\*)'
+#   - '--no-preserve-root'
+#   - ':\s*\(\s*\)\s*\{\s*:\s*\|\s*:\s*&\s*\}'      # fork bomb
+#   - '\bdd\b.*\bof=/dev/'
+#   - '\bmkfs(\.\w+)?\b'
+#   - '\b(curl|wget)\b[^|]*\|\s*(sudo\s+)?(ba)?sh\b'
+#   - 'dangerouslyDisableSandbox'
+#   - '--dangerously-skip-permissions'
 severity:
   permission_bypass: critical
   out_of_scope: high

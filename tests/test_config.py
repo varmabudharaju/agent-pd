@@ -3,7 +3,9 @@ from agent_pd.config import load_rules, Rules
 def test_defaults_when_no_file(tmp_path):
     r = load_rules(tmp_path / "missing.yaml")
     assert isinstance(r, Rules)
-    assert "dangerouslyDisableSandbox" in r.escalation_patterns
+    # dangerouslyDisableSandbox is now a categorically-dangerous (never-downgrade) regex.
+    assert "dangerouslyDisableSandbox" in r.never_downgrade_patterns
+    assert any("sudo" in p for p in r.escalation_patterns)
     assert r.severity["permission_bypass"] == "critical"
     assert r.detectors["off_task"] is True
     assert 0.0 < r.off_task_overlap_threshold < 1.0
@@ -41,6 +43,23 @@ def test_pdrules_sensitive_matches_defaults():
     repo_rules = Path(__file__).resolve().parent.parent / "pd-rules.yaml"
     data = yaml.safe_load(repo_rules.read_text())
     assert data["sensitive_patterns"] == DEFAULT_SENSITIVE
+
+
+def test_never_downgrade_patterns_default_present():
+    r = load_rules(None)
+    assert isinstance(r.never_downgrade_patterns, list)
+    assert len(r.never_downgrade_patterns) > 0
+
+
+def test_pattern_tiers_overridable(tmp_path):
+    p = tmp_path / "rules.yaml"
+    p.write_text(
+        "escalation_patterns:\n  - my-esc\n"
+        "never_downgrade_patterns:\n  - my-nd\n"
+    )
+    r = load_rules(p)
+    assert r.escalation_patterns == ["my-esc"]
+    assert r.never_downgrade_patterns == ["my-nd"]
 
 
 def test_storage_defaults():
