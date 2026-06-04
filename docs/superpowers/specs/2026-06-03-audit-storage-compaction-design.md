@@ -1,6 +1,29 @@
 # Audit storage compaction — design
 
-**Date:** 2026-06-03 · **Status:** approved (brainstorming) · **Repo:** `agent-pd`
+**Date:** 2026-06-03 · **Status:** REVISED to gzip-only (see Revision history) · **Repo:** `agent-pd`
+
+## Revision history
+
+- **2026-06-03a — original:** offline `pd compact` + content-addressed blob store that
+  externalized bulky `tool_input` strings, keeping a `{hash, bytes, preview}` reference inline.
+  Premise: "no detector reads the externalized fields, so detection is lossless."
+- **2026-06-03b — PIVOT to gzip-only (this revision).** The premise was **false**. The biggest
+  payload — a `Write`'s file `content` — is read in full by the `self_permission` detector (the
+  critical "agent writes a permission key into its own `.claude/settings.json`" check, via the
+  `_NEW_TEXT = {Write: content, Edit: new_string, NotebookEdit: new_source}` map). `out_of_scope`,
+  `off_task`, and `permission_bypass` likewise read the Bash `command`. Externalizing those
+  fields (keeping only a 500-char preview) makes `pd compact` **silently drop real critical
+  offenses** — e.g. a self-permissioning Write whose perm key sits past char 500 in a >2 KB body.
+  A final adversarial whole-branch review caught this; the original equivalence test passed only
+  because it was accidentally constructed to dodge the failure path. Since "100% correct
+  detection" is a hard requirement, and the bulk *is* detection-relevant, externalization cannot
+  be lossless. **Resolution:** drop externalization and the blob store entirely; compact = gzip
+  the old session logs (every field stays inline, just compressed). Gzip alone is ~5–10× on JSON
+  text — most of the scalability win — and is trivially lossless. Whole-session pruning by age
+  becomes an opt-in retention dial (default: keep everything, for autopsy bookkeeping).
+
+The sections below describe the **shipped (gzip-only)** design. The blob-store specifics from
+2026-06-03a are retained only where struck through for historical context.
 
 ## Problem
 
@@ -21,20 +44,30 @@ and **provably correct** (deterministic, idempotent, lossless of every fact the 
 "what did the agent do" autopsy actually use). Bulk content must remain *recoverable later*
 until explicitly pruned — not silently dropped.
 
-## Approach (chosen)
+## Approach (chosen — gzip-only)
 
-**Offline `pd compact` + content-addressed, compressed blob store.** The hook stays
-**completely untouched** — it remains the dumb, crash-safe, always-exit-0 recorder writing full
-JSONL. A separate, deterministic, idempotent `pd compact` pass transforms *old* sessions into a
-compact storage form: bulky string fields are externalized into a gzip'd, content-addressed
-blob store, the audit line keeps a small reference (`hash + bytes + preview`), and the rewritten
-log is gzipped.
+**Offline `pd compact` = gzip the old session logs.** The hook stays **completely untouched** —
+it remains the dumb, crash-safe, always-exit-0 recorder writing full JSONL. A separate,
+deterministic, idempotent `pd compact` pass rewrites *old* sessions (never the active one) from
+`<sid>.jsonl` to `<sid>.jsonl.gz` with **every field kept inline** — only gzip compression is
+applied. This is trivially lossless for both detection and "what did the agent do" autopsy.
+Reads go through a single `store.iter_events` that transparently handles `.jsonl` and
+`.jsonl.gz` (and merges both on a compaction/append race). Whole-session pruning by age is an
+**opt-in** retention dial; the default keeps everything.
+
+Why not externalize the bulky fields (the original plan): the bulky fields (`content`,
+`new_string`, `new_source`, Bash `command`) are exactly the fields detectors read, so
+externalizing them is not lossless for detection — see Revision history 2026-06-03b.
 
 Rejected alternatives:
-- **Shrink at write-time (in the hook).** Puts blob I/O on the must-never-fail path and
-  complicates the one component deliberately kept bulletproof. Rejected.
-- **Lossless-only (gzip + rotate, no blob store).** Simplest, but the 35 KB-per-Write driver
-  survives inside the gzip and we lose dedup + independent blob-retention dials. Fallback only.
+- **Shrink at write-time (in the hook).** Puts I/O on the must-never-fail path and complicates
+  the one component deliberately kept bulletproof. Rejected.
+- **Content-addressed blob externalization (original 2026-06-03a plan).** Breaks
+  detection-losslessness because the bulky fields are detector-read. Rejected after review.
+- **Externalize + rehydrate-on-detect, or detect-at-compaction (frozen verdicts).** Both preserve
+  correctness and recover the dedup/size win, but at the cost of coupling detectors to storage
+  (rehydrate) or making `report` verdict-aware (frozen). Deferred as possible future work; not
+  needed to ship the scalability win.
 
 ## On-disk formats
 
