@@ -29,19 +29,35 @@ def _parse_lines(text):
 
 def iter_events(session_id, audit_dir):
     """Yield parsed events for a session, reading <sid>.jsonl.gz if present, else
-    <sid>.jsonl. If BOTH exist (compaction/append race), yield gz events first then the
-    plain-text lines. Blank/partial lines are skipped.
+    <sid>.jsonl. Blank/partial lines are skipped.
+
+    If BOTH exist we cross-boundary dedup: yield every gz event, then yield only the plain
+    events NOT already present in gz. Two states leave both files behind:
+      * the compaction window (compact_session does tmp.replace(gz) then plain.unlink() — both
+        briefly hold the SAME events). gz==plain, so plain is fully skipped: no double-count.
+      * a RESUMED session (Claude Code reuses the session_id): gz={old, compacted} and a fresh
+        plain={new appended} are DISJOINT, so all plain events survive.
+    Dedup is ONLY across the gz/plain boundary — we never dedup within a single file, so two
+    legitimately-identical lines inside plain are both kept (seen-set is built from gz only).
 
     Reads each file fully into memory: intended for offline report/compaction, not live
     tailing (live.py has its own incremental tail reader)."""
     audit_dir = Path(audit_dir)
     gz = audit_dir / f"{session_id}.jsonl.gz"
     plain = audit_dir / f"{session_id}.jsonl"
-    if gz.exists():
+    seen = set()
+    gz_exists = gz.exists()
+    if gz_exists:
         with gzip.open(gz, "rt", encoding="utf-8") as f:
-            yield from _parse_lines(f.read())
+            for ev in _parse_lines(f.read()):
+                seen.add(json.dumps(ev, sort_keys=True))
+                yield ev
     if plain.exists():
-        yield from _parse_lines(plain.read_text(encoding="utf-8"))
+        for ev in _parse_lines(plain.read_text(encoding="utf-8")):
+            # Only filter against gz; do NOT dedup plain against itself.
+            if gz_exists and json.dumps(ev, sort_keys=True) in seen:
+                continue
+            yield ev
 
 
 def _session_files(audit_dir):
