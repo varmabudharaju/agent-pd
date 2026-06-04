@@ -6,7 +6,15 @@ tool/permission event; a CLI audits those logs and reports rule offenses with ev
 
 - **Repo:** https://github.com/varmabudharaju/agent-pd (branch `master`)
 - **Local:** `/Users/varma/agent-pd` · Python 3.11 (use `python3`) · CLI: `pd`
-- **State at handoff:** 182 tests passing, working tree clean, all pushed.
+- **State at handoff:** 347 tests passing, working tree clean, all pushed.
+- **Security-hardening pass landed** (`fix/security-hardening`): faithful permission
+  matching (operator-split, word-boundary, gitignore globs, redirect/command-sub
+  isolation, conservative bias), sensitive-path immunity (never downgraded by allow-rules),
+  control-file protection (`self_permission` now flags any write to own settings/agents/
+  rules via any method), regex two-tier `permission_bypass` (never-downgrade catastrophic
+  + downgradable escalation), richer hook capture (denial_reason/tool_result/
+  permission_mode/transcript_path/_extra, forced deny), and `store.iter_events`
+  gz/plain dedup. Tests 155 → 347.
 - **Author policy:** all commits under `varma <sairam.vzf33@gmail.com>` — **no Co-Authored-By / no Claude or Anthropic attribution** in commits or PRs.
 
 ---
@@ -34,11 +42,11 @@ tool/permission event; a CLI audits those logs and reports rule offenses with ev
 
 | Offense | Severity | How | Confidence |
 |---|---|---|---|
-| `permission_bypass` | critical | denied calls + escalation patterns (`sudo `, `dangerouslyDisableSandbox`…) in **Bash** commands only | high |
+| `permission_bypass` | critical | denied calls + **regex two-tier** in **Bash** commands: never-downgrade catastrophic (`rm -rf /`, fork bomb, `curl\|sh`, `dd of=/dev/`…) stay critical under any allow-rule; downgradable escalation (sudo, chmod 777, cwd-wipe…) only by a precise rule | high |
 | `out_of_scope` | high | file OR Bash path outside the project (auto: git root or cwd), sensitive paths always (critical), or outside `scope_dirs` when set | high |
 | `redundant` | low | exact-duplicate tool calls (ignores Bash `description` noise) | high |
 | `off_task` | review | search term (incl. shell `grep`/`find`/`curl`) vs. brief word-overlap < threshold | **low — heuristic** |
-| `self_permission` | critical | `Write`/`Edit`/`Bash` that writes a permission key into a `.claude/settings*.json` | high |
+| `self_permission` | critical | **any** agent write to its own control files (`.claude/settings*.json`, `.claude/agents/*.md`, `pd-rules*.yaml`) via any method (Write/Edit/NotebookEdit or Bash cp/mv/tee/sed/python/base64/redirect), regardless of content | high |
 | `tool_not_allowed` | high | subagent uses a tool outside its declared `tools:` allowlist (`.claude/agents/<type>.md`) | high |
 
 The three deterministic detectors are trustworthy and free. `off_task` is a noisy
@@ -47,10 +55,14 @@ heuristic — the **judge** (below) turns it into high-confidence verdicts.
 **Permission-aware severity.** `out_of_scope` and escalation hits are downgraded to a quiet
 `info` severity when the action matches a permission **allow-rule** the user configured
 (`permissions.allow` in `~/.claude/settings.json` / project `.claude/settings.local.json`)
-— authorized → info, unauthorized → full severity. `info` is not counted as a crime and is
-hidden under `pd watch --crimes-only`. A denied call stays critical regardless. Allow-rules
-are carried on each `AgentRecord` (loaded by `LiveMonitor` from the agent's cwd); detectors
-never read settings files directly. See `agent_pd/permissions.py`.
+— authorized → info, unauthorized → full severity. Matching is **faithful to Claude Code
+semantics** (operator-split, word-boundary prefixes, gitignore-style globs, command-sub /
+redirect isolation) with a conservative bias: ambiguity → not permitted. Two things are
+**never** downgraded: **sensitive-path** access and **categorically-catastrophic** commands
+(the never-downgrade tier). `info` is not counted as a crime and is hidden under `pd watch
+--crimes-only`. A denied call stays critical regardless. Allow-rules are carried on each
+`AgentRecord` (loaded by `LiveMonitor` from the agent's cwd); detectors never read settings
+files directly. See `agent_pd/permissions.py`.
 
 ## The off_task judge (`pd judge`) — opt-in, cost-capped
 
@@ -112,7 +124,7 @@ agent_pd/
   install_hook.py   # idempotent settings.json hook registration
   store.py          # gzip-only audit compaction + transparent .jsonl/.jsonl.gz reading (iter_events, compact_session/compact_all/compact_targets, prune_sessions)
   cli.py            # argparse: report/list/install-hook/watch/judge/compact
-tests/              # 182 tests, pure (no API key needed — judge uses injected fake clients)
+tests/              # 347 tests, pure (no API key needed — judge uses injected fake clients)
 pd-rules.yaml       # user-editable rules
 docs/superpowers/   # specs + the original implementation plan
 ```
@@ -123,7 +135,7 @@ docs/superpowers/   # specs + the original implementation plan
 cd ~/agent-pd
 pip install --user -e .          # core (zero runtime deps but PyYAML)
 pip install --user -e ".[judge]" # + anthropic SDK (only for the API judge backend)
-python3 -m pytest -q             # 182 tests
+python3 -m pytest -q             # 347 tests
 ```
 
 TDD throughout; detectors/render/live/judge are all unit-tested with no network.
