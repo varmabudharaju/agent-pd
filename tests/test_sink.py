@@ -207,6 +207,122 @@ def test_httpsink_connection_refused_raises():
 
 
 # --------------------------------------------------------------------------
+# FIX 1: never send the bearer token over cleartext http to a non-loopback
+# host; never auto-follow redirects (cross-host token leak).
+# --------------------------------------------------------------------------
+
+def test_httpsink_token_over_cleartext_remote_refused(monkeypatch):
+    # token + http:// + non-loopback host => refuse BEFORE any request.
+    called = {"n": 0}
+
+    def boom_urlopen(*a, **k):
+        called["n"] += 1
+        raise AssertionError("must not open a connection when refusing")
+
+    monkeypatch.setattr(sink_mod.urllib.request, "urlopen", boom_urlopen)
+    s = HttpSink("http://example.com/ingest", token="SECRET", timeout=5.0)
+    with pytest.raises(SinkError) as ei:
+        s.send([{"a": 1, SEQ_KEY: 1}])
+    msg = str(ei.value).lower()
+    assert "cleartext" in msg or "http" in msg
+    # the secret must not have leaked into the error message
+    assert "SECRET" not in str(ei.value)
+    # and no request was attempted at all
+    assert called["n"] == 0
+
+
+def test_httpsink_token_over_cleartext_loopback_allowed():
+    # http:// to loopback with a token is fine for local testing.
+    rec = _Recorder()
+    srv, t = _serve(rec, 200)
+    try:
+        port = srv.server_address[1]
+        s = HttpSink(f"http://127.0.0.1:{port}/ingest", token="tok", timeout=5.0)
+        n = s.send([{"a": 1, SEQ_KEY: 1}])
+        assert n == 1
+    finally:
+        srv.shutdown()
+        t.join(timeout=2)
+    assert rec.headers["Authorization"] == "Bearer tok"
+
+
+def test_httpsink_no_token_remote_http_allowed():
+    # no token => nothing to leak => http:// remote is allowed (it just has to
+    # actually connect somewhere; use a loopback server but no token).
+    rec = _Recorder()
+    srv, t = _serve(rec, 200)
+    try:
+        port = srv.server_address[1]
+        s = HttpSink(f"http://127.0.0.1:{port}/", timeout=5.0)
+        # no token set -> the cleartext guard must not fire
+        assert s.token is None
+        n = s.send([{"a": 1, SEQ_KEY: 1}])
+        assert n == 1
+    finally:
+        srv.shutdown()
+        t.join(timeout=2)
+
+
+def test_httpsink_redirect_not_followed_raises():
+    # a 3xx must not be auto-followed (cross-host Authorization leak); it is an
+    # error. Use a 302 with a Location header to confirm we do NOT chase it.
+    # The redirect Location points back at THIS same server's /ok path, which
+    # returns 200. So if redirects were auto-followed the send would SUCCEED;
+    # only a no-follow implementation turns the 302 into a SinkError. This makes
+    # the test fail against the old (follow-redirects) code.
+    class Redirector(BaseHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+
+        def do_POST(self):
+            if self.path == "/ok":
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(b"ok")
+                return
+            self.send_response(302)
+            self.send_header(
+                "Location",
+                f"http://127.0.0.1:{self.server.server_address[1]}/ok",
+            )
+            self.end_headers()
+
+        def do_GET(self):
+            # urllib turns a 302 on POST into a GET on follow.
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b"ok")
+
+    srv = HTTPServer(("127.0.0.1", 0), Redirector)
+    t = threading.Thread(target=srv.serve_forever, daemon=True)
+    t.start()
+    try:
+        port = srv.server_address[1]
+        s = HttpSink(f"http://127.0.0.1:{port}/", timeout=5.0)
+        with pytest.raises(SinkError):
+            s.send([{"a": 1, SEQ_KEY: 1}])
+    finally:
+        srv.shutdown()
+        t.join(timeout=2)
+
+
+# --------------------------------------------------------------------------
+# FIX 3: serialization errors -> SinkError (never escape as TypeError)
+# --------------------------------------------------------------------------
+
+def test_filesink_unserializable_event_raises_sinkerror(tmp_path):
+    s = FileSink(str(tmp_path / "off.ndjson"))
+    with pytest.raises(SinkError):
+        s.send([{"x": object(), SEQ_KEY: 1}])
+
+
+def test_httpsink_unserializable_event_raises_sinkerror():
+    s = HttpSink("http://127.0.0.1:9/", timeout=2.0)
+    with pytest.raises(SinkError):
+        s.send([{"x": object(), SEQ_KEY: 1}])
+
+
+# --------------------------------------------------------------------------
 # make_sink
 # --------------------------------------------------------------------------
 
