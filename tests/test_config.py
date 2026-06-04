@@ -41,3 +41,22 @@ def test_pdrules_sensitive_matches_defaults():
     repo_rules = Path(__file__).resolve().parent.parent / "pd-rules.yaml"
     data = yaml.safe_load(repo_rules.read_text())
     assert data["sensitive_patterns"] == DEFAULT_SENSITIVE
+
+
+def test_storage_defaults():
+    from agent_pd.config import load_rules
+    rules = load_rules(None)
+    assert rules.storage["blob_threshold_bytes"] == 2048
+    assert rules.storage["preview_chars"] == 500
+    assert rules.storage["blob_retention_days"] is None
+    assert rules.storage["max_blob_bytes"] is None
+
+
+def test_storage_override(tmp_path):
+    from agent_pd.config import load_rules
+    p = tmp_path / "rules.yaml"
+    p.write_text("storage:\n  blob_threshold_bytes: 4096\n  blob_retention_days: 30\n")
+    rules = load_rules(p)
+    assert rules.storage["blob_threshold_bytes"] == 4096
+    assert rules.storage["blob_retention_days"] == 30
+    assert rules.storage["preview_chars"] == 500   # unspecified key keeps default

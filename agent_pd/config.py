@@ -35,6 +35,12 @@ DEFAULTS = {
         "tool_not_allowed": True,
     },
     "off_task_overlap_threshold": 0.15,
+    "storage": {
+        "blob_threshold_bytes": 2048,
+        "preview_chars": 500,
+        "blob_retention_days": None,
+        "max_blob_bytes": None,
+    },
 }
 
 
@@ -47,6 +53,7 @@ class Rules:
     severity: dict
     detectors: dict
     off_task_overlap_threshold: float
+    storage: dict
 
 
 def _deep_merge(base: dict, override: dict) -> dict:
@@ -72,4 +79,5 @@ def load_rules(path=None) -> Rules:
         severity=data["severity"],
         detectors=data["detectors"],
         off_task_overlap_threshold=data["off_task_overlap_threshold"],
+        storage=data["storage"],
     )
