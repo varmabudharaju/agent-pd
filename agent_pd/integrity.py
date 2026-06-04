@@ -18,6 +18,8 @@ This module is pure: no hook/CLI wiring lives here.
 import hashlib
 import hmac
 import json
+import os
+from pathlib import Path
 
 CHAIN_KEY = "chain"
 SEQ_KEY = "seq"
@@ -127,3 +129,74 @@ def verify_events(events, key: bytes | None = None) -> dict:
         "broken_at": None,
         "reason": "",
     }
+
+
+# ---- head-file + key I/O helpers (pure-ish; consumed by the hook) ----
+#
+# The "head" of a session is the (seq, chain) of its last appended chained event,
+# cached in a small sidecar file so the hook need not re-read the whole log on every
+# append. last_link_from_file is the fallback when the head is missing/deleted.
+#
+# These sidecars (<sid>.head.json, <sid>.lock) intentionally do NOT match the
+# *.jsonl / *.jsonl.gz globs in store._session_files, so they are never mistaken
+# for sessions.
+
+
+def head_path(session_id, audit_dir) -> Path:
+    sid = session_id or "unknown-session"
+    return Path(audit_dir) / f"{sid}.head.json"
+
+
+def read_head(session_id, audit_dir):
+    """Return (prev_hex, prev_seq) from the head file.
+
+    On a missing or corrupt head file, return (GENESIS, 0).
+    """
+    hp = head_path(session_id, audit_dir)
+    try:
+        data = json.loads(hp.read_text(encoding="utf-8"))
+        return str(data[CHAIN_KEY]), int(data[SEQ_KEY])
+    except Exception:
+        return GENESIS, 0
+
+
+def write_head(session_id, audit_dir, seq, chain_hex) -> None:
+    """Atomically write the head file (tmp + os.replace)."""
+    hp = head_path(session_id, audit_dir)
+    tmp = hp.with_suffix(hp.suffix + ".tmp")
+    tmp.write_text(
+        json.dumps({SEQ_KEY: seq, CHAIN_KEY: chain_hex}),
+        encoding="utf-8",
+    )
+    os.replace(tmp, hp)
+
+
+def last_link_from_file(session_id, audit_dir):
+    """Return (prev_hex, prev_seq) from the LAST non-blank line of <sid>.jsonl.
+
+    Used as a fallback when the head file is missing. If the file is missing, empty,
+    or its last line is legacy (no chain), return (GENESIS, 0).
+    """
+    from agent_pd.hook import audit_path  # local import to avoid a cycle
+
+    path = audit_path(session_id, audit_dir=audit_dir)
+    try:
+        last = None
+        with path.open("r", encoding="utf-8") as f:
+            for line in f:
+                if line.strip():
+                    last = line
+        if last is None:
+            return GENESIS, 0
+        ev = json.loads(last)
+        if CHAIN_KEY in ev and SEQ_KEY in ev:
+            return str(ev[CHAIN_KEY]), int(ev[SEQ_KEY])
+        return GENESIS, 0
+    except Exception:
+        return GENESIS, 0
+
+
+def audit_key():
+    """Return the audit HMAC key bytes from PD_AUDIT_KEY, or None if unset."""
+    val = os.environ.get("PD_AUDIT_KEY")
+    return val.encode("utf-8") if val else None
