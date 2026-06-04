@@ -97,40 +97,29 @@ def _cmd_watch(args) -> int:
 
 def _cmd_compact(args) -> int:
     rules = load_rules(args.rules)
-    threshold = args.threshold or rules.storage["blob_threshold_bytes"]
-    preview = rules.storage["preview_chars"]
-    audit, blobs = Path(args.audit_dir), Path(args.blob_dir)
+    audit = Path(args.audit_dir)
+    prune_days = (args.prune_older_than if args.prune_older_than is not None
+                  else rules.storage["retention_days"])
     if args.dry_run:
         if args.session:
             targets = [args.session] if (audit / f"{args.session}.jsonl").exists() else []
         else:
             targets = store.compact_targets(audit)
         print(f"[dry run] would compact {len(targets)} session(s): "
-              f"{', '.join(sorted(set(targets))) or '(none)'} "
-              f"(threshold {threshold}B). re-run without --dry-run to apply.")
+              f"{', '.join(sorted(set(targets))) or '(none)'}. "
+              f"re-run without --dry-run to apply.")
         return 0
     if args.session:
-        n = store.compact_session(args.session, audit, blobs, threshold, preview)
-        print(f"compacted session {args.session}: {n} event(s) rewritten.")
+        n = store.compact_session(args.session, audit)
+        print(f"compacted session {args.session}: {n} event(s) gzipped.")
     else:
-        done = store.compact_all(audit, blobs, threshold, preview)
+        done = store.compact_all(audit)
         print(f"compacted {len(done)} session(s): {', '.join(done) or '(none)'} "
               f"(skipped the active session).")
-    removed = store.prune_blobs(blobs,
-                                older_than_days=args.prune_blobs_older_than,
-                                max_bytes=args.max_blob_bytes)
-    if removed:
-        print(f"pruned {removed} blob(s).")
-    return 0
-
-
-def _cmd_show(args) -> int:
-    try:
-        data = store.get_blob(args.blob, args.blob_dir)
-    except FileNotFoundError:
-        print(f"blob {args.blob} not found in {args.blob_dir}")
-        return 1
-    sys.stdout.write(data.decode("utf-8", errors="replace"))
+    if prune_days is not None:
+        removed = store.prune_sessions(audit, older_than_days=prune_days)
+        if removed:
+            print(f"pruned {removed} compacted session(s) older than {prune_days}d.")
     return 0
 
 
@@ -185,24 +174,15 @@ def build_parser() -> argparse.ArgumentParser:
     j.add_argument("--audit-dir", default=DEFAULT_AUDIT_DIR)
     j.set_defaults(func=_cmd_judge)
 
-    c = sub.add_parser("compact", help="compress old sessions + externalize bulky payloads")
-    c.add_argument("--session", default=None, help="compact one session (default: all but active)")
-    c.add_argument("--threshold", type=int, default=None,
-                   help="byte size above which a string is externalized (default: config)")
-    c.add_argument("--prune-blobs-older-than", type=int, default=None,
-                   help="delete blobs older than N days")
-    c.add_argument("--max-blob-bytes", type=int, default=None,
-                   help="cap total blob bytes (oldest evicted first)")
+    c = sub.add_parser("compact", help="gzip old session logs (lossless; skips the active session)")
+    c.add_argument("--session", default=None,
+                   help="compact one session (default: all but the active one)")
+    c.add_argument("--prune-older-than", type=int, default=None,
+                   help="also delete compacted sessions older than N days (default: keep all)")
     c.add_argument("--dry-run", action="store_true", help="report only; write nothing")
     c.add_argument("--rules", default=None)
     c.add_argument("--audit-dir", default=DEFAULT_AUDIT_DIR)
-    c.add_argument("--blob-dir", default=store.DEFAULT_BLOB_DIR)
     c.set_defaults(func=_cmd_compact)
-
-    s = sub.add_parser("show", help="print the full content of a stored blob (autopsy)")
-    s.add_argument("--blob", required=True, help="sha256 of the blob (the _pd_blob value)")
-    s.add_argument("--blob-dir", default=store.DEFAULT_BLOB_DIR)
-    s.set_defaults(func=_cmd_show)
 
     return p
 
