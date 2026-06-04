@@ -155,6 +155,9 @@ def compact_all(audit_dir, blob_dir, threshold=DEFAULT_THRESHOLD,
     files = _session_files(audit_dir)
     if not files:
         return []
+    # Heuristic: the most-recently-modified session file is the one likely still being
+    # appended to (the live session), so we never compact it. For an offline single-user
+    # tool this is safe; the iter_events gz+plain merge is the backstop if it ever races.
     active = max(files)[1]
     audit_dir = Path(audit_dir)
     done = []
