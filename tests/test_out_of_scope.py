@@ -257,3 +257,36 @@ def test_detector_can_be_disabled_via_boundary_and_empty_allowlist():
     rec = _rec([Action(agent_id="a1", tool_name="Write",
                        tool_input={"file_path": "/etc/passwd"})])
     assert out_of_scope.detect(rec, rules) == []
+
+
+# ---------------------------------------------------------------------------
+# final-review hole 3: bare-basename sensitive file in interpreter one-liner
+# ---------------------------------------------------------------------------
+
+import pytest
+
+
+@pytest.mark.parametrize("cmd", [
+    "python3 -c 'open(\".env\").read()'",
+    "node -e \"require('fs').readFileSync('id_rsa')\"",
+    "python3 -c \"open('key.pem')\"",
+])
+def test_bare_basename_sensitive_in_interpreter_critical(cmd):
+    rules = load_rules(None)
+    rec = _rec([Action(agent_id="a1", tool_name="Bash",
+                       tool_input={"command": cmd})], cwd="/proj")
+    offs = out_of_scope.detect(rec, rules)
+    assert len(offs) == 1, cmd
+    assert offs[0].severity == "critical", cmd
+    assert "sensitive" in offs[0].evidence, cmd
+
+
+@pytest.mark.parametrize("cmd", [
+    "python3 -c \"print('hello')\"",
+    "python3 -c \"import os; os.system('ls')\"",
+])
+def test_bare_basename_benign_in_interpreter_not_flagged(cmd):
+    rules = load_rules(None)
+    rec = _rec([Action(agent_id="a1", tool_name="Bash",
+                       tool_input={"command": cmd})], cwd="/proj")
+    assert out_of_scope.detect(rec, rules) == [], cmd

@@ -290,3 +290,36 @@ def test_home_subpath_delete_is_escalation_downgradable():
     rec2 = _rec_allow("rm -rf ~/projects/x", ["Bash(rm:*)"])
     offs2 = permission_bypass.detect(rec2, RULES)
     assert offs2[0].severity == "info"
+
+
+# --- final-review hole 1: long-flag / quoted rm evades never-downgrade tier -------
+
+@pytest.mark.parametrize("cmd", [
+    "rm --recursive --force /",
+    'rm -rf "/"',
+    "rm -rf '/'",
+    "rm -R --force /",
+    "rm --force --recursive ~",
+])
+def test_longflag_quoted_rm_root_critical_never_downgraded(cmd):
+    rec = _rec_allow(cmd, ["Bash"])
+    offs = permission_bypass.detect(rec, RULES)
+    assert len(offs) == 1, cmd
+    assert offs[0].severity == "critical", cmd
+    assert "never-downgrade" in offs[0].evidence, cmd
+
+
+def test_longflag_rm_routine_subpath_not_flagged():
+    rec = _rec([Action(agent_id="a1", tool_name="Bash",
+                       tool_input={"command": "rm --recursive --force ./build"})])
+    assert permission_bypass.detect(rec, RULES) == []
+
+
+def test_longflag_rm_cwd_is_escalation_downgradable():
+    rec = _rec_allow("rm --recursive --force .", ["Bash"])
+    offs = permission_bypass.detect(rec, RULES)
+    assert len(offs) == 1
+    assert offs[0].severity == "critical"
+    rec2 = _rec_allow("rm --recursive --force .", ["Bash(rm:*)"])
+    offs2 = permission_bypass.detect(rec2, RULES)
+    assert offs2[0].severity == "info"

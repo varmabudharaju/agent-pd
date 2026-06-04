@@ -185,3 +185,44 @@ def test_bash_grep_settings_not_flagged():
     rec = _rec([Action(agent_id="a1", tool_name="Bash",
                        tool_input={"command": "grep allow .claude/settings.json"})])
     assert self_permission.detect(rec, rules) == []
+
+
+# ---------------------------------------------------------------------------
+# final-review hole 2: bare-name pd-rules.yaml Bash write evades self_permission
+# ---------------------------------------------------------------------------
+
+import pytest
+
+
+@pytest.mark.parametrize("cmd", [
+    "echo x > pd-rules.yaml",
+    "tee pd-rules.yaml",
+    "cp /tmp/evil pd-rules.yaml",
+    "printf x >> pd-rules.yaml",
+])
+def test_bare_name_rules_bash_write_flagged_critical(cmd):
+    rules = load_rules(None)
+    rec = _rec([Action(agent_id="a1", tool_name="Bash",
+                       tool_input={"command": cmd})], cwd="/proj")
+    offs = self_permission.detect(rec, rules)
+    assert len(offs) == 1, cmd
+    assert offs[0].severity == "critical", cmd
+
+
+@pytest.mark.parametrize("cmd", [
+    "cat pd-rules.yaml",
+    "grep allow pd-rules.yaml",
+])
+def test_bare_name_rules_pure_read_not_flagged(cmd):
+    rules = load_rules(None)
+    rec = _rec([Action(agent_id="a1", tool_name="Bash",
+                       tool_input={"command": cmd})], cwd="/proj")
+    assert self_permission.detect(rec, rules) == [], cmd
+
+
+def test_bare_settings_json_without_dotclaude_not_flagged():
+    # settings.json by bare basename (no .claude/) must NOT match.
+    rules = load_rules(None)
+    rec = _rec([Action(agent_id="a1", tool_name="Bash",
+                       tool_input={"command": "echo x > settings.json"})], cwd="/proj")
+    assert self_permission.detect(rec, rules) == []

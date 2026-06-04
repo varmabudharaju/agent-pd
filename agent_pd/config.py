@@ -21,21 +21,40 @@ DEFAULT_SENSITIVE = [
 #   never_downgrade_patterns — categorically dangerous; always critical, never downgraded.
 # --- rm recursive-force matching --------------------------------------------------
 # Tiering an `rm -rf` depends ENTIRELY on its TARGET, so we match the recursive+force
-# flags then a target token. `_RM_RF` matches `rm` carrying both -r and -f (combined
-# in either order: -rf/-fr/-Rf/..., or as separate flags, possibly with other flags
-# like --no-preserve-root interleaved), up to the start of the first non-flag argument.
-#   - (?:-\S+\s+)*  consumes any leading flags (e.g. --no-preserve-root, -v)
-#   - the alternation requires a combined r+f flag OR the two as separate -r/-f flags
+# flags then a target token. `_RM_RF` matches `rm` carrying BOTH a recursive flag and a
+# force flag, in any order, expressed as:
+#   recursive: a combined short cluster containing r/R (-rf, -fR, -vrf, ...),
+#              a standalone -r/-R, or the long --recursive
+#   force:     a combined short cluster containing f, a standalone -f, or the long --force
+# Other flags (e.g. --no-preserve-root, -v) may be interleaved. We require, in either
+# order, "a force-bearing flag" + "a recursive-bearing flag" (or one combined cluster
+# carrying both), consuming any flags around/between them up to the first non-flag arg.
+#
 # A target token is then matched against the tier-specific patterns below. Targets are
-# anchored by an "end of token" lookahead — whitespace, a JSON closing quote, `*`, or
-# end of string — so `/` matches the root token but NOT a mid-path slash like /tmp/x.
+# anchored by an "end of token" lookahead — whitespace, a quote (JSON-escaped \" or a
+# literal ' / "), `*`, or end of string — so `/` matches the root token but NOT a
+# mid-path slash like /tmp/x. Targets also tolerate ONE optional leading quote so that
+# `rm -rf "/"` / `rm -rf '/'` (quoted root) tier identically to the bare form.
+# A combined short cluster carrying both r/R and f (e.g. -rf, -fr, -Rf, -vrf).
+_RM_BOTH = r"-(?=[a-z]*[rR])(?=[a-z]*f)[a-z]+"
+# A recursive-bearing flag: combined cluster with r/R, standalone -r/-R, or --recursive.
+_RM_REC = r"(?:-[a-z]*[rR][a-z]*\b|--recursive\b)"
+# A force-bearing flag: combined cluster with f, standalone -f, or --force.
+_RM_FRC = r"(?:-[a-z]*f[a-z]*\b|--force\b)"
+# any run of additional flags (each `-...`) separated by whitespace, possibly empty
+_RM_FLAGS = r"(?:-\S+\s+)*"
 _RM_RF = (
-    r"\brm\s+(?:-\S+\s+)*"
-    r"(?:-[a-z]*r[a-z]*f[a-z]*|-[a-z]*f[a-z]*r[a-z]*|-r\b[^\"]*?\s-f|-f\b[^\"]*?\s-r)"
-    r"[a-z]*\b\s+(?:-\S+\s+)*"
+    r"\brm\s+" + _RM_FLAGS
+    + r"(?:"
+    + _RM_BOTH + r"\b"                                  # one cluster has both
+    + r"|" + _RM_REC + r"\s+" + _RM_FLAGS + _RM_FRC     # recursive then force
+    + r"|" + _RM_FRC + r"\s+" + _RM_FLAGS + _RM_REC     # force then recursive
+    + r")"
+    + r"\s+" + _RM_FLAGS
+    + r"""(?:\\?["'])?"""                               # optional leading quote on target
 )
-# End-of-target-token: whitespace, the JSON string's closing quote, or end of blob.
-_TGT_END = r'(?=\s|"|$)'
+# End-of-target-token: whitespace, a quote (\" escaped, or literal ' / "), or end.
+_TGT_END = r"""(?=\s|\\?["']|$)"""
 
 DEFAULT_ESCALATION = [
     r"\bsudo\b",
@@ -56,8 +75,8 @@ DEFAULT_ESCALATION = [
 
 DEFAULT_NEVER_DOWNGRADE = [
     # Catastrophic rm: recursive+force against a SYSTEM or HOME root. Never excusable.
-    #   filesystem root: `rm -rf /`, `rm -rf /*`, `rm -rf / --flag`
-    _RM_RF + r"/" + r'(?=\s|"|\*|$)',
+    #   filesystem root: `rm -rf /`, `rm -rf /*`, `rm -rf / --flag`, `rm -rf "/"`
+    _RM_RF + r"/" + r"""(?=\s|\\?["']|\*|$)""",
     #   home root: `rm -rf ~`, `rm -rf ~/`, `rm -rf $HOME`, `rm -rf ${HOME}`
     _RM_RF + r"~/?" + _TGT_END,
     _RM_RF + r"\$\{?HOME\}?/?" + _TGT_END,

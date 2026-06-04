@@ -18,12 +18,18 @@ _ENV_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 # inside that quoted argument, so we recurse into it (Evasion 1).
 _INTERPRETERS = {"bash", "sh", "zsh", "python", "python3", "python2",
                  "ruby", "node", "perl"}
-# Pull path-looking string literals out of an interpreter script body: quoted
-# ('...'/"...") or bare tokens that start with /, ~, ./ or ../.
+# Pull candidate paths out of an interpreter script body. Two sources:
+#  (1) ANY quoted ('...'/"...") string literal — a bare basename like '.env' or
+#      'id_rsa' hides here and only classifies to an offense if it actually resolves
+#      to / matches something sensitive or out-of-project; benign literals ('hello',
+#      'ls', 'w') classify to None and are harmless.
+#  (2) bare tokens that start with /, ~, ./ or ../ (unquoted path literals).
 _SCRIPT_PATH_RE = re.compile(
-    r"""['"](/[^'"]*|~[^'"]*|\.\.?/[^'"]*)['"]"""   # quoted absolute/home/relative
-    r"""|(?<![\w'"])((?:/|~/|\.\.?/)[^\s'")(,;]+)""" # bare absolute/home/relative
+    r"""['"]([^'"]*)['"]"""                           # any quoted string literal
+    r"""|(?<![\w'"])((?:/|~/|\.\.?/)[^\s'")(,;]+)"""  # bare absolute/home/relative
 )
+# Cap candidate length so a quoted blob of prose/code isn't treated as a path.
+_MAX_SCRIPT_CAND = 256
 # A simple literal $VAR / ${VAR} reference (Evasion 2).
 _VARREF_RE = re.compile(r"^\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?$")
 
@@ -140,13 +146,20 @@ def _subst_var(tok: str, assigns: dict) -> str:
 
 
 def _extract_from_script(script: str) -> list:
-    """Pull path-looking string literals out of an interpreter script body
-    (Evasion 1). Catches quoted '/etc/shadow' and bare ../x style tokens."""
-    out = []
+    """Pull candidate paths out of an interpreter script body (Evasion 1). Catches
+    quoted literals — including bare basenames like '.env'/'id_rsa' — and bare
+    /, ~, ./ tokens. Candidates are de-duped; benign ones classify to None downstream
+    and produce no offense, so over-capturing is safe."""
+    out, seen = [], set()
     for m in _SCRIPT_PATH_RE.finditer(script or ""):
         p = m.group(1) or m.group(2)
-        if p and not p.startswith(_URL_PREFIXES):
-            out.append(p)
+        if not p or p in seen:
+            continue
+        # skip URLs, over-long blobs, and whitespace-bearing prose (not a path token)
+        if p.startswith(_URL_PREFIXES) or len(p) > _MAX_SCRIPT_CAND or any(c.isspace() for c in p):
+            continue
+        seen.add(p)
+        out.append(p)
     return out
 
 
