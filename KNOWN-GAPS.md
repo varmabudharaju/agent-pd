@@ -212,3 +212,9 @@ field the real payload never sends, and every downstream test hand-built `decisi
 objects — so nothing exercised the real `PermissionDenied` payload end-to-end. Going
 forward: at least one test per hook-fed path must use a **realistic** payload (the shape
 Claude Code actually sends), not a convenient one.
+
+**Update (2026-06-04):** `PermissionDenied` is now validated against a *real* recorded denial
+(`tests/test_hook.py::test_build_event_real_recorded_denial_shape`, reconstructed from session
+`29f86214`). Empirical finding: the live reason field is **`reason`**, not the doc-claimed
+`denial_reason` — the mapping reads all three so it's correct regardless. The `_extra` passthrough
+captures any unmapped field on the next live denial, so a future schema change can't silently slip.
