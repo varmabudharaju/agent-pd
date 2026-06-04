@@ -1,7 +1,7 @@
 # Session handoff — agent-pd
 
-**Prepared:** 2026-06-03 · **Repo:** `/Users/varma/agent-pd` (GitHub `varmabudharaju/agent-pd`, `master`)
-**State:** `master` @ `815a928` · **110 commits** · **434 tests passing** · 6 detectors · tree clean.
+**Prepared:** 2026-06-03 (updated 2026-06-04) · **Repo:** `/Users/varma/agent-pd` (GitHub `varmabudharaju/agent-pd`, `master`)
+**State:** `master` @ `c5a55c4` · **112 commits** · **435 tests passing** · 6 detectors · tree clean.
 
 agent-pd is a **catch-and-report watchdog** for Claude Code agent activity (main + subagents): it
 records every tool call via a hook, then flags misbehavior (out-of-scope/sensitive access,
@@ -9,9 +9,10 @@ permission bypass, an agent editing its own config, disallowed-tool use, off-tas
 DETECTS and REPORTS; it never blocks.
 
 **Status note:** there are **no known *unfixed* bugs** — every bug found by this session's audits
-and adversarial reviews was fixed with a regression test. The "Open work" below is **documented
-limitations, enhancements, and one pre-public validation** — not latent defects. Items are scoped
-so a fresh session can pick any one up cold.
+and adversarial reviews was fixed with a regression test. **The pre-public checklist is clear**
+(LICENSE added; the `PermissionDenied` payload validated against a real denial). The "Open work"
+below is therefore all **correctness/quality improvements, enhancements, and accepted limitations**
+— nothing blocking a public release. Items are scoped so a fresh session can pick any one up cold.
 
 Canonical companion docs (keep them authoritative; this file is the work-queue view):
 - `HANDOFF.md` — architecture / mental model / detector table.
@@ -70,7 +71,7 @@ permission_bypass, out_of_scope, redundant, off_task, self_permission, tool_scop
 ## Hand-test recipes
 
 ```bash
-python3 -m pytest -q                                   # 434 passing
+python3 -m pytest -q                                   # 435 passing
 python3 -c "from agent_pd.detectors import DETECTORS; print(list(DETECTORS))"   # 6
 python3 -m agent_pd.cli report --format md | head -40
 python3 -m agent_pd.cli compact --dry-run              # then drop --dry-run
@@ -82,66 +83,55 @@ PD_SINK_TYPE=file PD_SINK_PATH=/tmp/pd.ndjson python3 -m agent_pd.cli sink push 
 
 ## OPEN WORK (prioritized — pick any item cold)
 
-Legend: 🔴 do before public · 🟠 correctness/quality improvement · 🟢 enhancement/backlog ·
-⚪ accepted limitation (document, likely won't "fix")
+Legend: 🟠 correctness/quality improvement · 🟢 enhancement/backlog ·
+⚪ accepted limitation (document, likely won't "fix"). **Nothing here blocks a public release.**
 
-### ✅ P0 — pre-public validation (DONE 2026-06-04)
-1. **`PermissionDenied` payload validated against a real recorded denial.**
-   - Evidence: a genuine recorded denial (session `29f86214`, 2026-06-02 — the auto-mode classifier
-     blocking a direct `git push origin master`) confirms the deny→critical path on real data:
-     `decision=deny` set, `reason` captured, `tool_name`/`tool_input`/`cwd` correct, main-agent
-     fields empty. Locked in as `tests/test_hook.py::test_build_event_real_recorded_denial_shape`.
-   - **Finding:** the real CC reason field is **`reason`** (the only key the pre-`_extra` hook mapped,
-     and it captured the reason) — **NOT** the doc-claimed `denial_reason`. Our mapping reads all
-     three (`denial_reason`→`reason`→`permissionDecisionReason`) so it's correct regardless; comment
-     in `hook.py` corrected to say so.
-   - **Caveat (honest):** the hook normalizes, so the *complete* raw field set isn't fully
-     observable, and a fresh denial couldn't be forced in autonomous mode (a no-op `git push` is
-     allowed, not denied). The `_extra` passthrough now captures any unmapped field on the **next**
-     live denial — so the tool can no longer silently miss a schema change. If you later get a real
-     denial, run `pd report`/inspect its audit line for a populated `_extra` to confirm nothing new.
-   - `LICENSE` (Apache-2.0) is DONE; copyright holder is `varma` — change to your full legal name /
-     company entity in `LICENSE` if this becomes a venture (the holder is who owns it).
+**✅ Recently cleared — don't redo:** (a) **LICENSE** (Apache-2.0) added — holder is `varma`,
+swap for your full legal name / company entity in `LICENSE` if this becomes a venture. (b)
+**`PermissionDenied` validated** against a real recorded denial (`29f86214`); the live reason field
+is **`reason`**, not the doc-claimed `denial_reason` (mapping reads all three, so correct either
+way; `_extra` will surface any new field on the next live denial). Test:
+`tests/test_hook.py::test_build_event_real_recorded_denial_shape`.
 
 ### 🟠 Correctness / quality improvements
-2. **MCP / non-Bash file-write tools bypass `self_permission`.**
+1. **MCP / non-Bash file-write tools bypass `self_permission`.**
    - Where: `detectors/self_permission.py` (only inspects Write/Edit/NotebookEdit + Bash).
    - Why: a filesystem MCP tool with a different tool name could write `.claude/settings.json`
      undetected.
    - Approach: make the control-file check tool-agnostic — flag ANY tool whose input names a
      control path in a write-shaped field; or a configurable `write_tools` set. Size: M.
-3. **Multi-level `$VAR` indirection not resolved** (`A=/etc/shadow; B=$A; cat $B`).
+2. **Multi-level `$VAR` indirection not resolved** (`A=/etc/shadow; B=$A; cat $B`).
    - Where: `scope.py` (`_subst_var` / assignment tracking — currently single-level).
    - Why: a 2-hop variable hides a sensitive path from `out_of_scope`.
    - Approach: iterate variable substitution to a fixed point (cap iterations); only literal
      assignments. Size: S–M. (Note: `$IFS`/word-split, `$(...)`-built paths, base64/eval remain
      inherently out of reach — see ⚪ below.)
-4. **`tool_result` stored verbatim** (can be large — full stdout / file contents).
+3. **`tool_result` stored verbatim** (can be large — full stdout / file contents).
    - Where: `hook.py` (capture), optionally `render.py`/`store.py`.
    - Why: inflates audit lines; gzip compaction mitigates on disk but raw `.jsonl` grows.
    - Approach: cap/truncate `tool_result` at capture (keep size + a head), or only at the render
      boundary. Decide whether detectors will ever READ it (currently none do). Size: S.
-5. **`~/.config` is broad for `critical`** (holds innocuous app config → noisy).
+4. **`~/.config` is broad for `critical`** (holds innocuous app config → noisy).
    - Where: `config.py` `DEFAULT_SENSITIVE`.
    - Approach: narrow to the credential-bearing subpaths (`~/.config/gh`, `~/.config/gcloud`, …)
      instead of the whole tree, or downgrade `~/.config` to boundary. Size: S.
-6. **Allow-rules read once per agent** (no mid-session reload).
+5. **Allow-rules read once per agent** (no mid-session reload).
    - Where: `live.py`/`models.py` (`AgentRecord.allow_rules` loaded at first event).
    - Why: if the user changes `permissions.allow` mid-session it isn't picked up. Minor.
    - Approach: re-read on change / per-event (watch perf). Size: S. (Low priority.)
 
 ### 🟢 Enhancements / backlog
-7. **Sink: chunk large backlogs.** `sink.push_session` sends ALL pending events in one POST/append.
+6. **Sink: chunk large backlogs.** `sink.push_session` sends ALL pending events in one POST/append.
    - Where: `sink.py`. Approach: batch by max-N / max-bytes, advance state per chunk. Size: S.
-8. **Sink: syslog backend** (stdlib `logging.handlers.SysLogHandler` → remote syslog = off-host).
+7. **Sink: syslog backend** (stdlib `logging.handlers.SysLogHandler` → remote syslog = off-host).
    - Where: `sink.py` `make_sink`. Size: S.
-9. **Sink: read-back reconciliation** `pd verify --against-sink` (fetch the off-host copy, diff vs
+8. **Sink: read-back reconciliation** `pd verify --against-sink` (fetch the off-host copy, diff vs
    local) — only if the sink is readable. Where: `cli.py`/`sink.py`. Size: M.
-10. **Judge verdict disk cache** — skip re-judging identical (brief, search) pairs. Where:
-    `judge.py`. Size: S–M.
-11. **`pd summary <session>`** — per-agent digest (files touched, time span, tool histogram).
+9. **Judge verdict disk cache** — skip re-judging identical (brief, search) pairs. Where:
+   `judge.py`. Size: S–M.
+10. **`pd summary <session>`** — per-agent digest (files touched, time span, tool histogram).
     Where: new `cli` cmd + `summary.py`. Size: S.
-12. **Capture more hook events** (`PostToolUseFailure`, `PreCompact`, `SessionEnd`) to enrich the
+11. **Capture more hook events** (`PostToolUseFailure`, `PreCompact`, `SessionEnd`) to enrich the
     timeline. Where: hook is event-agnostic already; just ensure they flow through. Size: S.
     (`tool_result` outcome capture is already DONE.)
 
@@ -162,7 +152,7 @@ Legend: 🔴 do before public · 🟠 correctness/quality improvement · 🟢 en
 
 ---
 
-## Session history (how we got here — 6 PRs, tests 155 → 434)
+## Session history (how we got here — PRs #4–#11, tests 155 → 435)
 - **#4 `feat/audit-storage-compaction`** — `pd compact` gzip-only (pivoted away from a blob store
   that broke detection-losslessness; full story in the design-doc revision history).
 - **#5 `fix/security-hardening`** — closed a class of under-flagging holes across permissions,
@@ -170,5 +160,7 @@ Legend: 🔴 do before public · 🟠 correctness/quality improvement · 🟢 en
 - **#6 `feat/audit-integrity`** — hash-chain + `pd verify` (tamper-evident).
 - **#7** — prior handoff. **#8** — Apache-2.0 `LICENSE` + metadata.
 - **#9 `feat/audit-sink`** — off-host forwarder `pd sink push/status` (file/http).
+- **#10** — handoff refreshed to this open-work-queue format.
+- **#11** — `PermissionDenied` validated against a real denial (P0 cleared).
 
 Pointers: specs in `docs/superpowers/specs/`, plans in `docs/superpowers/plans/`.
