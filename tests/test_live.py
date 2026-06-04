@@ -102,3 +102,16 @@ def test_watch_emits_banner_crime_and_rap_sheet(tmp_path):
     assert rc == 0
     blob = "\n".join(out_lines)
     assert "a1" in blob and "CRITICAL" in blob and "RAP SHEET" in blob
+
+
+def test_resolve_session_file_prefers_store_latest(tmp_path):
+    import os, time, gzip
+    from agent_pd.live import _resolve_session_file
+    audit = tmp_path / "audit"; audit.mkdir()
+    (audit / "old.jsonl").write_text('{"i":1}\n')
+    (audit / "new.jsonl.gz").write_bytes(gzip.compress(b'{"i":2}\n'))
+    old = time.time() - 100
+    os.utime(audit / "old.jsonl", (old, old))
+    # most-recent resolution (no session id) should pick "new" even though it's gz
+    resolved = _resolve_session_file(audit, None)
+    assert resolved is not None and resolved.name.startswith("new")
