@@ -31,7 +31,20 @@ pd compact [--session ID] [--prune-older-than DAYS] [--dry-run]
                          # inline, so detection over a compacted session is identical to the raw
                          # session. --prune-older-than DAYS optionally deletes compacted sessions
                          # older than N days (default: keep everything, for autopsy bookkeeping).
+pd sink push [--session ID] [--all]
+                         # forward un-sent chained audit events off-host to an append-only sink,
+                         # so retroactive local deletion can't reach what already shipped
+                         # (incremental + idempotent; retries on failure)
+pd sink status [--session ID] [--all]
+                         # show forwarded/last per session; flags "remote ahead" (a sign the
+                         # local log was truncated/tampered)
 ```
+
+**Off-host sink config (env).** `PD_SINK_TYPE=file|http`, then `PD_SINK_PATH=...` (file
+backend) or `PD_SINK_URL=...` (http backend); `PD_SINK_TOKEN=...` is the **env-only** bearer
+token for the http backend (never put it in a config file). For a remote http sink always use
+`https://` — the token is refused over cleartext to a non-loopback host. See SECURITY.md for
+the honest framing (append-only-IF-deployed-correctly; doesn't stop forging or hook-disable).
 
 `pd report` replays the session audit log through the same engine `pd watch` uses, so it
 covers **both** the main agent (shown as `main`) and its subagents from one source.

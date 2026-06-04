@@ -6,12 +6,18 @@ tool/permission event; a CLI audits those logs and reports rule offenses with ev
 
 - **Repo:** https://github.com/varmabudharaju/agent-pd (branch `master`)
 - **Local:** `/Users/varma/agent-pd` · Python 3.11 (use `python3`) · CLI: `pd`
-- **State at handoff:** 392 tests passing, working tree clean, all pushed.
+- **State at handoff:** 434 tests passing, working tree clean, all pushed.
 - **Audit-log integrity landed** (`feat/audit-integrity`): events are hash-chained
   (`seq` + `chain = sha256(prev_chain + canonical(event))`, HMAC-SHA256 if `PD_AUDIT_KEY`
   is set), computed by the hook under a per-session file lock with a `<sid>.head.json`
   anchor; new `pd verify` recomputes the chain and reports tamper/truncation (rc 2). It is
   tamper-**evident**, not tamper-**proof** (a same-user agent can re-chain) — see SECURITY.md.
+- **Off-host sink landed** (`feat/audit-sink`): `pd sink push` / `pd sink status`
+  (`agent_pd/sink.py`) forward chained audit events off-host to an append-only destination
+  (file or http backend, env-only `PD_SINK_TOKEN`), so retroactive local deletion can't reach
+  what already shipped. Incremental + idempotent (per-session `<sid>.sink` state); the hook is
+  untouched (no network on the hot path; the local log is the spool). Append-only is a
+  deployment requirement; doesn't stop forging or hook-disable — see SECURITY.md.
 - **Security-hardening pass landed** (`fix/security-hardening`): faithful permission
   matching (operator-split, word-boundary, gitignore globs, redirect/command-sub
   isolation, conservative bias), sensitive-path immunity (never downgraded by allow-rules),
@@ -112,6 +118,11 @@ pd compact [--session ID] [--prune-older-than DAYS] [--dry-run]
                                      # most-recently-modified (active) session; lossless for detection
                                      # (every field stays inline). --prune-older-than DAYS optionally
                                      # deletes compacted sessions older than N days (default: keep all)
+
+pd sink push [--session ID] [--all]  # forward un-sent chained events off-host (append-only sink)
+pd sink status [--session ID] [--all] # forwarded/last per session; flags "remote ahead"
+                                     # config: PD_SINK_TYPE=file|http + PD_SINK_PATH/PD_SINK_URL;
+                                     # PD_SINK_TOKEN is env-only (http bearer); use https:// for remote
 ```
 
 ## File map
@@ -122,6 +133,9 @@ agent_pd/
   integrity.py      # audit-log hash-chain core: seq + chain (sha256 / HMAC via PD_AUDIT_KEY),
                     #   canonical(event), verify_events, per-session file lock + <sid>.head.json
                     #   read/write helpers (anchor for tamper/truncation detection)
+  sink.py           # off-host forwarder: resolve_sink_config (env-only PD_SINK_TOKEN), FileSink/
+                    #   HttpSink (stdlib NDJSON; token refused over cleartext-remote, no redirect
+                    #   follow), per-session <sid>.sink state, push_session (incremental+idempotent)
   investigator.py   # gather(): correlate audit + transcripts + meta.json by agent_id
   detectors/
     __init__.py     # DETECTORS registry + run_detectors()
@@ -135,8 +149,8 @@ agent_pd/
   models.py         # Action, AgentRecord, Offense dataclasses
   install_hook.py   # idempotent settings.json hook registration
   store.py          # gzip-only audit compaction + transparent .jsonl/.jsonl.gz reading (iter_events, compact_session/compact_all/compact_targets, prune_sessions)
-  cli.py            # argparse: report/list/install-hook/watch/judge/compact/verify
-tests/              # 392 tests, pure (no API key needed — judge uses injected fake clients)
+  cli.py            # argparse: report/list/install-hook/watch/judge/compact/verify/sink
+tests/              # 434 tests, pure (no API key needed — judge uses injected fake clients)
 pd-rules.yaml       # user-editable rules
 docs/superpowers/   # specs + the original implementation plan
 ```
@@ -147,7 +161,7 @@ docs/superpowers/   # specs + the original implementation plan
 cd ~/agent-pd
 pip install --user -e .          # core (zero runtime deps but PyYAML)
 pip install --user -e ".[judge]" # + anthropic SDK (only for the API judge backend)
-python3 -m pytest -q             # 392 tests
+python3 -m pytest -q             # 434 tests
 ```
 
 TDD throughout; detectors/render/live/judge are all unit-tested with no network.
@@ -180,13 +194,20 @@ TDD throughout; detectors/render/live/judge are all unit-tested with no network.
 
 ## Backlog / next steps (discussed, not built)
 
-1. **Capture tool results/outcomes in the hook** (success/failure, output size) → richer
+- ✅ **Off-host audit-log sink — DONE** (`feat/audit-sink`; `pd sink push`/`status`,
+  `agent_pd/sink.py`). See the bullet at the top and SECURITY.md.
+
+Remaining, in rough priority:
+
+1. **Validate the real `PermissionDenied` / `tool_result` payload** against a live denial —
+   confirm the exact field names the hook reads (still inferred defensively; see `NOTES.md`).
+2. **Optional chunking of large sink batches** — `push_session` currently sends all pending
+   events in one request; very large backlogs (or http body limits) may want batching.
+3. **A syslog sink backend** — alongside file/http, for shops that aggregate via syslog.
+4. **Capture tool results/outcomes in the hook** (success/failure, output size) → richer
    feed showing what each action *did*. Watch audit-log size.
-2. **`pd summary <session>`** — per-agent digest (files touched, time span, tool histogram).
-3. **`out_of_scope` tool-allowlist half** — flag tools outside an agent's declared
-   `tools:` allowlist (needs reading `.claude/agents/<type>.md` frontmatter). v2.
-4. **Verdict disk cache for the judge** — skip re-judging identical (brief, search) pairs.
-5. **Confirm the live `PermissionDenied` hook payload** field names (one-time capture).
+5. **`pd summary <session>`** — per-agent digest (files touched, time span, tool histogram).
+6. **Verdict disk cache for the judge** — skip re-judging identical (brief, search) pairs.
 
 ## Storage layout
 

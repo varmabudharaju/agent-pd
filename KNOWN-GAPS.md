@@ -150,7 +150,7 @@ not a sandbox, and a determined adversary using obfuscation or indirection can e
 - **`off_task` remains heuristic** (word-overlap) — use `pd judge` for trustworthy verdicts.
   `~/.config` sensitivity is broad and can be noisy.
 
-## ✅ Shipped on `feat/audit-integrity` (partial)
+## ✅ Shipped on `feat/audit-integrity` + `feat/audit-sink`
 
 - **Audit-log integrity — hash-chain tamper-evidence.** Every audit event now carries a
   `seq` (monotonic per session) and `chain = sha256(prev_chain + canonical(event))`, or
@@ -162,11 +162,23 @@ not a sandbox, and a determined adversary using obfuscation or indirection can e
   sessions (rc 0). Catches in-place edits, reordering, mid-deletion, tail truncation,
   inserted unchained lines, and (with HMAC) edits by someone without the key. Verifies across
   `pd compact` (canonical form is round-trip stable over the gzipped log).
-- **Residual — still not tamper-*proof*.** It is tamper-**evident**, not tamper-**proof**. A
-  same-user agent with Bash can read the log, the head file, and (usually) `PD_AUDIT_KEY`, so
-  a determined attacker can re-chain the whole log after tampering and pass `pd verify`. The
-  remaining work for true tamper-proofing is shipping events to an **off-host append-only
-  sink** the audited agent can't reach. (See SECURITY.md "Audit-log integrity".)
+- **✅ Off-host sink shipped** (`feat/audit-sink`). The chained events can now be forwarded
+  off-host with **`pd sink push`** / **`pd sink status`** (`agent_pd/sink.py`): file backend
+  (append NDJSON to a path — point it at a WORM/append-only mount) or http backend (POST NDJSON
+  to a collector, env-only `PD_SINK_TOKEN` bearer). Forwarding is incremental + idempotent
+  (per-session `<sid>.sink` state, `seq > last-forwarded`); on failure it doesn't advance, so
+  events retry. The hook stays untouched (no network on the hot path; the local log is the
+  spool). `pd sink status` flags "remote ahead" when more was shipped off-host than remains
+  locally — a local-truncation signal. Transport refuses the token over cleartext-to-remote
+  and won't follow redirects. This upgrades integrity to *retroactive deletion/alteration of
+  genuine events is prevented* — **but only if the destination is genuinely append-only with
+  write-only (non-deleting) creds**, which is a server-enforced deployment requirement pd can't
+  guarantee. (See SECURITY.md "Audit-log integrity — off-host sink".)
+- **Residual — still not tamper-*proof*.** Even with the sink, it is tamper-**evident**, not
+  tamper-**proof**. The same-user agent holds the write credential, so it can **forge** entries
+  into the sink, and it can **disable the hook** so nothing is sent (a gap, not a deletion).
+  What the sink adds: a damning event already shipped off-host can't be made to disappear, and
+  `pd verify` can prove local↔off-host divergence.
 
 ## 📋 Backlog / v2
 
