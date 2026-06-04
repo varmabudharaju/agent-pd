@@ -67,15 +67,17 @@ def test_put_blob_roundtrip(tmp_path):
 
 
 def test_put_blob_dedups(tmp_path):
+    import os
     raw = b"same content"
     sha1 = store.put_blob(raw, tmp_path)
-    mtime1 = store.blob_path(sha1, tmp_path).stat().st_mtime_ns
+    # backdate the blob far into the past, then re-put the SAME content
+    os.utime(store.blob_path(sha1, tmp_path), (0, 0))
     sha2 = store.put_blob(raw, tmp_path)
     assert sha1 == sha2
-    # only one file exists for this content
+    # still exactly one file for this content (dedup, not a second write)
     assert len(list(store.blob_path(sha1, tmp_path).parent.glob("*.gz"))) == 1
-    # mtime refreshed (>=) so an actively re-referenced blob survives age pruning
-    assert store.blob_path(sha1, tmp_path).stat().st_mtime_ns >= mtime1
+    # mtime was refreshed forward from the backdated value (proves os.utime ran)
+    assert store.blob_path(sha1, tmp_path).stat().st_mtime > 0
 
 
 def test_get_blob_is_gzip_on_disk(tmp_path):

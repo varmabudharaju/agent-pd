@@ -69,5 +69,7 @@ def put_blob(raw_bytes, blob_dir):
 
 
 def get_blob(sha, blob_dir):
+    """Return the raw bytes stored for `sha`, decompressing on the fly.
+    Raises FileNotFoundError if the sha is not in the store."""
     with gzip.open(blob_path(sha, blob_dir), "rb") as f:
         return f.read()
