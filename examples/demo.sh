@@ -55,5 +55,11 @@ echo "===== pd verify ====="
 python3 -m agent_pd.cli verify --session DEMO --audit-dir "$SB/audit"
 echo
 echo "===== pd report ====="
+# Note: the off_task detector does NOT fire in this demo by design. off_task reads
+# each agent's brief from <projects-dir>/*/<session_id>/subagents/agent-<id>.meta.json,
+# so --projects-dir must point at the projects ROOT (one level above the session dir).
+# Here we pass the project dir for a self-contained demo, so no brief is loaded and
+# off_task stays silent. See docs/manual-tests/02-self-perm-tools-dup-offtask.md for the
+# correct layout that exercises off_task.
 python3 -m agent_pd.cli report --session DEMO --audit-dir "$SB/audit" \
   --projects-dir "$SB/proj" --format md
