@@ -115,3 +115,15 @@ def test_resolve_session_file_prefers_store_latest(tmp_path):
     # most-recent resolution (no session id) should pick "new" even though it's gz
     resolved = _resolve_session_file(audit, None)
     assert resolved is not None and resolved.name.startswith("new")
+
+
+def test_tail_events_reads_compacted_gz(tmp_path):
+    import gzip
+    from agent_pd.live import tail_events
+    audit = tmp_path / "audit"; audit.mkdir()
+    with gzip.open(audit / "s1.jsonl.gz", "wt", encoding="utf-8") as f:
+        f.write('{"i": 1}\n{"i": 2}\n')
+    # no plain .jsonl exists -> _resolve_session_file returns the .gz path;
+    # tail_events must read it without crashing.
+    events = list(tail_events(audit, "s1", poll_interval=0, _max_polls=1))
+    assert events == [{"i": 1}, {"i": 2}]
