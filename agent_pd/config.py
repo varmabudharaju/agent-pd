@@ -13,6 +13,18 @@ DEFAULT_SENSITIVE = [
     "*.pem", "*.key", "id_rsa", "id_ed25519", "*.p12",
     ".netrc", ".npmrc", ".pypirc", ".git-credentials",
     "*.keychain",
+    # --- system credential / identity files -------------------------------------
+    # Reading these (e.g. `cat /etc/shadow`) is textbook sensitive: password hashes,
+    # account identities, sudo rules, ssh host keys, root's home. Listing them as
+    # SENSITIVE (not merely a project-boundary hit) makes them critical and IMMUNE
+    # to downgrade -- a broad allow-rule like bare `Bash`/`Read` can never excuse it.
+    "/etc/shadow", "/etc/gshadow", "/etc/passwd", "/etc/sudoers", "/etc/sudoers.d",
+    "/etc/ssh",            # sshd_config + host keys (dir-prefix)
+    "/root",               # root's home (dir-prefix)
+    # macOS / BSD variants
+    "/etc/master.passwd", "/private/etc/master.passwd", "/private/etc/sudoers",
+    # shell history (credential leakage)
+    "~/.bash_history", "~/.zsh_history",
 ]
 
 # Escalation patterns are case-insensitive REGEXes matched (re.search) against the

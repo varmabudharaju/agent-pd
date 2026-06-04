@@ -20,6 +20,19 @@ sensitive_patterns:                  # always flagged (critical) even inside the
   - ".pypirc"
   - ".git-credentials"
   - "*.keychain"
+  # system credential / identity files — sensitive (critical, immune to downgrade)
+  - "/etc/shadow"
+  - "/etc/gshadow"
+  - "/etc/passwd"
+  - "/etc/sudoers"
+  - "/etc/sudoers.d"
+  - "/etc/ssh"                        # sshd_config + host keys (dir-prefix)
+  - "/root"                           # root's home (dir-prefix)
+  - "/etc/master.passwd"              # macOS / BSD
+  - "/private/etc/master.passwd"
+  - "/private/etc/sudoers"
+  - "~/.bash_history"                 # shell history (credential leakage)
+  - "~/.zsh_history"
 # Escalation patterns are case-insensitive regexes (re.search) matched against the
 # Bash command. Listing either key here REPLACES the built-in defaults (deep-merge
 # replaces lists), so include the built-ins you still want. Omit both keys to use defaults.

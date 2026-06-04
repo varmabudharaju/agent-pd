@@ -147,6 +147,50 @@ def test_extract_paths_unresolvable_var_does_not_crash():
 
 # --- Evasion 3: in-project symlink to a sensitive dir (realpath) ---
 
+# --- system credential / identity paths are SENSITIVE (immune to downgrade) ---
+
+def test_classify_system_credential_paths_sensitive():
+    from agent_pd.config import DEFAULT_SENSITIVE
+    pats = DEFAULT_SENSITIVE
+    # exact absolute matches
+    for p in ["/etc/shadow", "/etc/gshadow", "/etc/passwd", "/etc/sudoers",
+              "/etc/master.passwd", "/private/etc/master.passwd",
+              "/private/etc/sudoers"]:
+        assert scope.classify(p, "/proj", [], pats, project_boundary=True)[0] == "sensitive", p
+
+
+def test_classify_system_dir_prefix_sensitive():
+    from agent_pd.config import DEFAULT_SENSITIVE
+    pats = DEFAULT_SENSITIVE
+    # dir-prefix matches: a file UNDER the listed dir is sensitive
+    assert scope.classify("/etc/ssh/sshd_config", "/proj", [], pats,
+                          project_boundary=True)[0] == "sensitive"
+    assert scope.classify("/etc/ssh/ssh_host_rsa_key", "/proj", [], pats,
+                          project_boundary=True)[0] == "sensitive"
+    assert scope.classify("/etc/sudoers.d/myrule", "/proj", [], pats,
+                          project_boundary=True)[0] == "sensitive"
+    assert scope.classify("/root/.ssh/id_rsa", "/proj", [], pats,
+                          project_boundary=True)[0] == "sensitive"
+    assert scope.classify("/root/.bash_history", "/proj", [], pats,
+                          project_boundary=True)[0] == "sensitive"
+
+
+def test_classify_shell_history_sensitive():
+    from agent_pd.config import DEFAULT_SENSITIVE
+    pats = DEFAULT_SENSITIVE
+    bash_hist = os.path.join(os.path.expanduser("~"), ".bash_history")
+    zsh_hist = os.path.join(os.path.expanduser("~"), ".zsh_history")
+    assert scope.classify(bash_hist, "/proj", [], pats, project_boundary=True)[0] == "sensitive"
+    assert scope.classify(zsh_hist, "/proj", [], pats, project_boundary=True)[0] == "sensitive"
+
+
+def test_classify_nonsensitive_etc_still_boundary():
+    # REGRESSION: a non-listed /etc file is still a plain boundary hit, not sensitive.
+    from agent_pd.config import DEFAULT_SENSITIVE
+    pats = DEFAULT_SENSITIVE
+    assert scope.classify("/etc/hosts", "/proj", [], pats, project_boundary=True)[0] == "boundary"
+
+
 def test_classify_follows_symlink_outside(tmp_path):
     proj = tmp_path / "proj"
     proj.mkdir()

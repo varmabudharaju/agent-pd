@@ -10,8 +10,9 @@ def _rec(actions, cwd="/proj"):
 
 def test_flags_file_outside_project_by_default():
     rules = load_rules(None)  # scope_dirs == [], project_boundary True
+    # a NON-sensitive out-of-project path -> plain boundary (high)
     rec = _rec([Action(agent_id="a1", tool_name="Write",
-                       tool_input={"file_path": "/etc/passwd"})])
+                       tool_input={"file_path": "/etc/hosts"})])
     offs = out_of_scope.detect(rec, rules)
     assert len(offs) == 1
     assert offs[0].offense == "out_of_scope"
@@ -151,11 +152,11 @@ def test_nonsensitive_boundary_still_downgraded_by_matching_rule():
 
 
 def test_interpreter_oneliner_surfaces_boundary_path():
-    # Evasion 1 end-to-end: python3 -c hides /etc/shadow inside the script string.
-    # /etc/shadow is outside /proj -> boundary (high), no longer invisible.
+    # Evasion 1 end-to-end: python3 -c hides an out-of-project path inside the
+    # script string. A NON-sensitive out-of-project path -> boundary (high).
     rules = load_rules(None)
     rec = _rec([Action(agent_id="a1", tool_name="Bash",
-                       tool_input={"command": 'python3 -c "open(\'/etc/shadow\').read()"'})])
+                       tool_input={"command": 'python3 -c "open(\'/etc/hosts\').read()"'})])
     offs = out_of_scope.detect(rec, rules)
     assert len(offs) == 1
     assert offs[0].severity == "high"
@@ -175,10 +176,10 @@ def test_interpreter_oneliner_surfaces_sensitive_path():
 
 
 def test_var_indirection_segment_surfaces_path():
-    # Evasion 2 end-to-end: TARGET=/etc/shadow; cat $TARGET
+    # Evasion 2 end-to-end: TARGET=<non-sensitive out-of-project>; cat $TARGET
     rules = load_rules(None)
     rec = _rec([Action(agent_id="a1", tool_name="Bash",
-                       tool_input={"command": "TARGET=/etc/shadow; cat $TARGET"})])
+                       tool_input={"command": "TARGET=/etc/hosts; cat $TARGET"})])
     offs = out_of_scope.detect(rec, rules)
     assert len(offs) == 1
     assert offs[0].severity == "high"
@@ -290,3 +291,98 @@ def test_bare_basename_benign_in_interpreter_not_flagged(cmd):
     rec = _rec([Action(agent_id="a1", tool_name="Bash",
                        tool_input={"command": cmd})], cwd="/proj")
     assert out_of_scope.detect(rec, rules) == [], cmd
+
+
+# ---------------------------------------------------------------------------
+# system credential / identity files are SENSITIVE -> critical, IMMUNE to
+# downgrade even under a broad allow-rule (bare `Bash` / bare `Read`).
+# ---------------------------------------------------------------------------
+
+def _bash(cmd, allow):
+    return AgentRecord(agent_id="a1", agent_type="Explore", brief="b", cwd="/proj",
+                       actions=[Action(agent_id="a1", tool_name="Bash",
+                                       tool_input={"command": cmd})],
+                       allow_rules=allow)
+
+
+def test_bash_cat_shadow_critical_immune_to_bare_bash():
+    rules = load_rules(None)
+    offs = out_of_scope.detect(_bash('bash -c "cat /etc/shadow"', ["Bash"]), rules)
+    assert len(offs) == 1
+    assert offs[0].severity == "critical"
+    assert "sensitive" in offs[0].evidence
+    assert "permitted" not in offs[0].evidence
+
+
+def test_python_open_shadow_critical_immune_to_bare_bash():
+    rules = load_rules(None)
+    offs = out_of_scope.detect(_bash("python3 -c \"open('/etc/shadow')\"", ["Bash"]), rules)
+    assert len(offs) == 1
+    assert offs[0].severity == "critical"
+    assert "sensitive" in offs[0].evidence
+
+
+def test_var_indirection_shadow_critical_immune_to_bare_bash():
+    rules = load_rules(None)
+    offs = out_of_scope.detect(_bash("TARGET=/etc/shadow; cat $TARGET", ["Bash"]), rules)
+    assert len(offs) == 1
+    assert offs[0].severity == "critical"
+    assert "sensitive" in offs[0].evidence
+
+
+def test_read_passwd_critical_immune_to_bare_read():
+    rules = load_rules(None)
+    rec = AgentRecord(agent_id="a1", agent_type="Explore", brief="b", cwd="/proj",
+                      actions=[Action(agent_id="a1", tool_name="Read",
+                                      tool_input={"file_path": "/etc/passwd"})],
+                      allow_rules=["Read"])
+    offs = out_of_scope.detect(rec, rules)
+    assert len(offs) == 1
+    assert offs[0].severity == "critical"
+    assert "sensitive" in offs[0].evidence
+    assert "permitted" not in offs[0].evidence
+
+
+def test_bash_cat_sshd_config_critical_dir_prefix():
+    rules = load_rules(None)
+    offs = out_of_scope.detect(_bash("cat /etc/ssh/sshd_config", ["Bash"]), rules)
+    assert len(offs) == 1
+    assert offs[0].severity == "critical"
+    assert "sensitive" in offs[0].evidence
+
+
+def test_read_root_id_rsa_critical():
+    rules = load_rules(None)
+    rec = AgentRecord(agent_id="a1", agent_type="Explore", brief="b", cwd="/proj",
+                      actions=[Action(agent_id="a1", tool_name="Read",
+                                      tool_input={"file_path": "/root/.ssh/id_rsa"})],
+                      allow_rules=["Read"])
+    offs = out_of_scope.detect(rec, rules)
+    assert len(offs) == 1
+    assert offs[0].severity == "critical"
+    assert "sensitive" in offs[0].evidence
+
+
+def test_in_project_normal_file_unaffected():
+    # REGRESSION: a normal in-project file still emits nothing.
+    rules = load_rules(None)
+    rec = _rec([Action(agent_id="a1", tool_name="Edit",
+                       tool_input={"file_path": "/proj/src/app.py"})])
+    assert out_of_scope.detect(rec, rules) == []
+
+
+def test_nonsensitive_out_of_project_still_boundary_downgradable():
+    # REGRESSION: a normal out-of-project NON-sensitive file is still boundary and
+    # downgradable to info by a matching allow-rule.
+    import os
+    rules = load_rules(None)
+    target = os.path.expanduser("~/projects/other/app.py")
+    rec = AgentRecord(agent_id="a1", agent_type="Explore", brief="b", cwd="/proj",
+                      actions=[Action(agent_id="a1", tool_name="Read",
+                                      tool_input={"file_path": target})],
+                      allow_rules=["Read(~/projects/**)"])
+    offs = out_of_scope.detect(rec, rules)
+    assert len(offs) == 1
+    assert "outside project" in offs[0].evidence
+    assert offs[0].severity == "info"
+    assert "permitted by allow-rule" in offs[0].evidence
