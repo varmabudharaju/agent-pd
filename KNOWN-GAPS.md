@@ -25,6 +25,16 @@ Legend: 🐞 confirmed bug · ⚠️ heuristic/limitation · 📋 backlog/v2 · 
 
 ---
 
+## ✅ Shipped on `feat/audit-storage-compaction`
+
+- **Unbounded audit-log growth** — `pd compact` compresses inactive sessions in-place to
+  `.jsonl.gz` and externalizes large tool-input payloads to a content-addressed blob store
+  (`~/.claude/pd/blobs/<ab>/<sha>.gz`). Compaction is lossless for detection. Active
+  sessions (most-recently-modified) are skipped so the hook can always append.
+  Addressed by `pd compact`; the storage-scalability concern is now resolved.
+
+---
+
 ## ✅ Shipped on `feat/known-gaps`
 
 - **Judge backend error isolation.** `judge_records` now isolates per-agent backend
@@ -95,6 +105,12 @@ Legend: 🐞 confirmed bug · ⚠️ heuristic/limitation · 📋 backlog/v2 · 
   `pd report` (forensic). No OS-notification subsystem.
 - **Blocking/intervention.** The hook stays logging-only, always exit 0. Catch-and-report,
   never arrest.
+- **Whole-session pruning (hard-delete old sessions).** `pd compact` does not delete
+  `.jsonl.gz` files or their blobs; wholesale pruning is a deliberate non-goal of the
+  storage-compaction work. Use `--prune-blobs-older-than DAYS` to reclaim blob bytes only.
+- **`pd watch` on already-compacted (gz-only) sessions.** `pd watch` tails active plain
+  `.jsonl` files — it is a live scanner, not a replay tool. For compacted sessions, use
+  `pd report` instead. Retrofitting live-tail for `.jsonl.gz` is out of scope.
 
 ## Test-discipline note
 

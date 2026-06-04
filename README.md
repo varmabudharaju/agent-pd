@@ -21,6 +21,12 @@ pd report --session <id> --format md
 pd report --verbose            # full evidence + files-touched per agent
 pd report --agent <id|main>    # focus one agent: digest + every action it took
 pd watch                 # live "police scanner" feed of agent activity + crimes
+pd compact [--session ID] [--threshold BYTES] [--prune-blobs-older-than DAYS] [--max-blob-bytes N] [--dry-run]
+                         # compress old sessions and externalize bulky tool-input payloads into a
+                         # content-addressed blob store (skips the active session; lossless for
+                         # detection; blobs recoverable via `pd show`)
+pd show --blob SHA       # print the full original content of a stored blob (for deep autopsy of
+                         # a compacted session)
 ```
 
 `pd report` replays the session audit log through the same engine `pd watch` uses, so it
@@ -55,6 +61,9 @@ session). Ctrl-C prints a final rap sheet. Zero extra dependencies — ANSI only
 The hook records **all** sessions concurrently (one `~/.claude/pd/audit/<session>.jsonl`
 per session). `pd watch` shows one session at a time by default; `pd watch --all` merges
 them; `pd list` enumerates every recorded session.
+
+**On-disk layout:** `audit/<sid>.jsonl` (live / active), `audit/<sid>.jsonl.gz` (compacted),
+`blobs/<ab>/<sha>.gz` (externalized bulk payloads — content-addressed, gzip-compressed).
 
 ## Offenses (v1, deterministic)
 
