@@ -250,16 +250,35 @@ def test_prune_blobs_by_age(tmp_path):
 def test_prune_blobs_by_max_bytes_removes_oldest_first(tmp_path):
     sha_old = store.put_blob(b"X" * 1000, tmp_path)
     sha_new = store.put_blob(b"Y" * 1000, tmp_path)
-    import os, time
     old = time.time() - 100
     os.utime(store.blob_path(sha_old, tmp_path), (old, old))
-    # cap below the on-disk total -> oldest gets evicted
-    store.prune_blobs(tmp_path, max_bytes=1)
+    # cap = room for exactly one blob -> the older one is evicted, the newest is kept,
+    # and the resulting total is at or under the cap (real cap enforcement).
+    one = store.blob_path(sha_new, tmp_path).stat().st_size
+    removed = store.prune_blobs(tmp_path, max_bytes=one)
+    assert removed == 1
     assert not store.blob_path(sha_old, tmp_path).exists()
     assert store.blob_path(sha_new, tmp_path).exists()
+    remaining = sum(p.stat().st_size for p in (tmp_path).glob("*/*.gz"))
+    assert remaining <= one
 
 
 def test_prune_blobs_noop_when_no_limits(tmp_path):
     sha = store.put_blob(b"keep", tmp_path)
     assert store.prune_blobs(tmp_path) == 0
     assert store.blob_path(sha, tmp_path).exists()
+
+
+def test_prune_blobs_max_bytes_enforces_cap_across_many(tmp_path):
+    shas = []
+    for i, c in enumerate([b"A", b"B", b"C"]):
+        s = store.put_blob(c * 1000, tmp_path)
+        os.utime(store.blob_path(s, tmp_path), (time.time() - (100 - i), ) * 2)  # A oldest, C newest
+        shas.append(s)
+    one = store.blob_path(shas[-1], tmp_path).stat().st_size
+    # cap of ~1.5 blobs -> must evict down to <= cap (keeps only the newest 1)
+    store.prune_blobs(tmp_path, max_bytes=one + one // 2)
+    remaining = sorted(p.name for p in tmp_path.glob("*/*.gz"))
+    total = sum(p.stat().st_size for p in tmp_path.glob("*/*.gz"))
+    assert total <= one + one // 2           # cap genuinely enforced
+    assert (store.blob_path(shas[-1], tmp_path)).exists()   # newest always kept

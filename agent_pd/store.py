@@ -195,10 +195,9 @@ def prune_blobs(blob_dir, older_than_days=None, max_bytes=None):
     if max_bytes is not None:
         total = sum(p.stat().st_size for p in blobs)
         for p in blobs:                       # oldest first (list is mtime-sorted)
-            sz = p.stat().st_size
-            if total - sz <= max_bytes:
+            if total <= max_bytes:
                 break
-            total -= sz
+            total -= p.stat().st_size
             p.unlink()
             removed += 1
     return removed
