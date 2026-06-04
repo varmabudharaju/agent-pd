@@ -121,3 +121,47 @@ def latest_session(audit_dir):
 
 def list_sessions(audit_dir):
     return sorted({sid for _, sid in _session_files(audit_dir)})
+
+
+def compact_session(session_id, audit_dir, blob_dir,
+                    threshold=DEFAULT_THRESHOLD, preview_chars=DEFAULT_PREVIEW_CHARS):
+    """Rewrite a session into <sid>.jsonl.gz, externalizing oversized tool_input strings
+    into the blob store. Idempotent and atomic. Returns the number of events rewritten."""
+    audit_dir = Path(audit_dir)
+    events = list(iter_events(session_id, audit_dir))
+    out_lines = []
+    for ev in events:
+        if "tool_input" in ev:
+            new_input, blobs = shrink_value(ev["tool_input"], threshold, preview_chars)
+            for sha, raw in blobs:
+                put_blob(raw, blob_dir)
+            ev = {**ev, "tool_input": new_input}
+        out_lines.append(json.dumps(ev))
+    gz = audit_dir / f"{session_id}.jsonl.gz"
+    tmp = audit_dir / f"{session_id}.jsonl.gz.tmp"
+    with gzip.open(tmp, "wt", encoding="utf-8") as f:
+        f.write("\n".join(out_lines) + ("\n" if out_lines else ""))
+    tmp.replace(gz)
+    plain = audit_dir / f"{session_id}.jsonl"
+    if plain.exists():
+        plain.unlink()
+    return len(events)
+
+
+def compact_all(audit_dir, blob_dir, threshold=DEFAULT_THRESHOLD,
+                preview_chars=DEFAULT_PREVIEW_CHARS):
+    """Compact every session EXCEPT the most-recently-modified (likely-active) one.
+    Returns the list of session ids compacted, in stable order."""
+    files = _session_files(audit_dir)
+    if not files:
+        return []
+    active = max(files)[1]
+    audit_dir = Path(audit_dir)
+    done = []
+    for sid in sorted({sid for _, sid in files}):
+        if sid == active:
+            continue
+        if (audit_dir / f"{sid}.jsonl").exists():
+            compact_session(sid, audit_dir, blob_dir, threshold, preview_chars)
+            done.append(sid)
+    return done
