@@ -282,3 +282,41 @@ def test_prune_blobs_max_bytes_enforces_cap_across_many(tmp_path):
     total = sum(p.stat().st_size for p in tmp_path.glob("*/*.gz"))
     assert total <= one + one // 2           # cap genuinely enforced
     assert (store.blob_path(shas[-1], tmp_path)).exists()   # newest always kept
+
+
+def test_report_identical_raw_vs_compacted(tmp_path):
+    from agent_pd.investigator import gather
+    from agent_pd.detectors import run_detectors
+    from agent_pd.config import load_rules
+
+    projects = tmp_path / "projects"; projects.mkdir()
+    rules = load_rules(None)
+
+    def offenses_for(audit):
+        recs = gather(session_id="s1", projects_dir=projects, audit_dir=audit)
+        out = []
+        for r in recs:
+            for o in run_detectors(r, rules):
+                out.append((o.offense, o.severity, o.evidence))
+        return sorted(out)
+
+    big = "D" * 9000
+    events = [
+        {"event": "PostToolUse", "session_id": "s1", "agent_id": "",
+         "tool_name": "Write", "tool_input": {"file_path": "/etc/passwd", "content": big},
+         "cwd": "/proj"},
+        {"event": "PermissionDenied", "session_id": "s1", "agent_id": "",
+         "tool_name": "Bash", "tool_input": {"command": "sudo rm -rf /"},
+         "decision": "deny", "cwd": "/proj"},
+    ]
+
+    raw_audit = tmp_path / "raw"; raw_audit.mkdir()
+    _write_jsonl(raw_audit / "s1.jsonl", events)
+    raw_offenses = offenses_for(raw_audit)
+
+    comp_audit = tmp_path / "comp"; comp_audit.mkdir()
+    _write_jsonl(comp_audit / "s1.jsonl", events)
+    store.compact_session("s1", comp_audit, tmp_path / "blobs", threshold=2048)
+
+    assert offenses_for(comp_audit) == raw_offenses
+    assert raw_offenses  # sanity: there ARE offenses to compare
