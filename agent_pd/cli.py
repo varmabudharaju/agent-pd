@@ -9,8 +9,6 @@ from .report import render_json, render_markdown
 from .hook import DEFAULT_AUDIT_DIR as HOOK_AUDIT_DIR
 from . import store
 
-DEFAULT_BLOB_DIR = Path.home() / ".claude" / "pd" / "blobs"
-
 
 def _cmd_report(args) -> int:
     rules = load_rules(args.rules)
@@ -106,10 +104,7 @@ def _cmd_compact(args) -> int:
         if args.session:
             targets = [args.session] if (audit / f"{args.session}.jsonl").exists() else []
         else:
-            files = store._session_files(audit)
-            active = max(files)[1] if files else None
-            targets = [sid for _, sid in files
-                       if sid != active and (audit / f"{sid}.jsonl").exists()]
+            targets = store.compact_targets(audit)
         print(f"[dry run] would compact {len(targets)} session(s): "
               f"{', '.join(sorted(set(targets))) or '(none)'} "
               f"(threshold {threshold}B). re-run without --dry-run to apply.")
@@ -201,12 +196,12 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("--dry-run", action="store_true", help="report only; write nothing")
     c.add_argument("--rules", default=None)
     c.add_argument("--audit-dir", default=DEFAULT_AUDIT_DIR)
-    c.add_argument("--blob-dir", default=DEFAULT_BLOB_DIR)
+    c.add_argument("--blob-dir", default=store.DEFAULT_BLOB_DIR)
     c.set_defaults(func=_cmd_compact)
 
     s = sub.add_parser("show", help="print the full content of a stored blob (autopsy)")
     s.add_argument("--blob", required=True, help="sha256 of the blob (the _pd_blob value)")
-    s.add_argument("--blob-dir", default=DEFAULT_BLOB_DIR)
+    s.add_argument("--blob-dir", default=store.DEFAULT_BLOB_DIR)
     s.set_defaults(func=_cmd_show)
 
     return p

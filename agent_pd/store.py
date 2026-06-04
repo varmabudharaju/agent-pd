@@ -15,6 +15,7 @@ from pathlib import Path
 BLOB_KEY = "_pd_blob"
 DEFAULT_THRESHOLD = 2048
 DEFAULT_PREVIEW_CHARS = 500
+DEFAULT_BLOB_DIR = Path.home() / ".claude" / "pd" / "blobs"
 
 
 def shrink_value(obj, threshold=DEFAULT_THRESHOLD, preview_chars=DEFAULT_PREVIEW_CHARS):
@@ -148,10 +149,10 @@ def compact_session(session_id, audit_dir, blob_dir,
     return len(events)
 
 
-def compact_all(audit_dir, blob_dir, threshold=DEFAULT_THRESHOLD,
-                preview_chars=DEFAULT_PREVIEW_CHARS):
-    """Compact every session EXCEPT the most-recently-modified (likely-active) one.
-    Returns the list of session ids compacted, in stable order."""
+def compact_targets(audit_dir):
+    """Session ids that `compact_all` would compact: every session that still has a plain
+    <sid>.jsonl, EXCEPT the most-recently-modified (active) one. Sorted. Pure read — writes
+    nothing. Shared by compact_all and the `pd compact --dry-run` preview so they never drift."""
     files = _session_files(audit_dir)
     if not files:
         return []
@@ -160,14 +161,18 @@ def compact_all(audit_dir, blob_dir, threshold=DEFAULT_THRESHOLD,
     # tool this is safe; the iter_events gz+plain merge is the backstop if it ever races.
     active = max(files)[1]
     audit_dir = Path(audit_dir)
-    done = []
-    for sid in sorted({sid for _, sid in files}):
-        if sid == active:
-            continue
-        if (audit_dir / f"{sid}.jsonl").exists():
-            compact_session(sid, audit_dir, blob_dir, threshold, preview_chars)
-            done.append(sid)
-    return done
+    return [sid for sid in sorted({sid for _, sid in files})
+            if sid != active and (audit_dir / f"{sid}.jsonl").exists()]
+
+
+def compact_all(audit_dir, blob_dir, threshold=DEFAULT_THRESHOLD,
+                preview_chars=DEFAULT_PREVIEW_CHARS):
+    """Compact every session EXCEPT the most-recently-modified (likely-active) one.
+    Returns the list of session ids compacted, in sorted order."""
+    targets = compact_targets(audit_dir)
+    for sid in targets:
+        compact_session(sid, audit_dir, blob_dir, threshold, preview_chars)
+    return targets
 
 
 def _all_blobs(blob_dir):

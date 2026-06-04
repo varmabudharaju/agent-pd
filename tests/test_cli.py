@@ -135,3 +135,12 @@ def test_list_includes_compacted_sessions(tmp_path, capsys):
     rc = main(["list", "--audit-dir", str(audit), "--projects-dir", str(projects)])
     assert rc == 0
     assert "a" in capsys.readouterr().out.split()
+
+
+def test_compact_dry_run_uses_config_threshold(tmp_path, capsys):
+    audit = tmp_path / "audit"; audit.mkdir()
+    (audit / "s1.jsonl").write_text('{"tool_name":"Read","tool_input":{}}\n')
+    rc = main(["compact", "--dry-run", "--audit-dir", str(audit),
+               "--blob-dir", str(tmp_path / "blobs")])
+    assert rc == 0
+    assert "2048" in capsys.readouterr().out     # config default threshold shown
