@@ -17,8 +17,11 @@ DEFAULT_PREVIEW_CHARS = 500
 
 def shrink_value(obj, threshold=DEFAULT_THRESHOLD, preview_chars=DEFAULT_PREVIEW_CHARS):
     """Recursively replace any string longer than `threshold` UTF-8 bytes with a blob-ref
-    dict. Pure: returns (new_obj, [(sha256_hex, raw_bytes), ...]). Idempotent — a dict that
-    already has BLOB_KEY is treated as an ordinary (small) dict."""
+    dict. Pure: returns (new_obj, [(sha256_hex, raw_bytes), ...]). The boundary is exclusive:
+    a string of exactly `threshold` bytes stays inline. The same sha may appear more than once
+    in the returned list when the same large string occurs multiple times; dedup is deferred to
+    `put_blob`. Idempotent — a dict that already contains BLOB_KEY is returned unchanged
+    without recursing into it, regardless of threshold/preview settings."""
     blobs = []
 
     def walk(v):
@@ -30,6 +33,8 @@ def shrink_value(obj, threshold=DEFAULT_THRESHOLD, preview_chars=DEFAULT_PREVIEW
                 return {BLOB_KEY: sha, "bytes": len(raw), "preview": v[:preview_chars]}
             return v
         if isinstance(v, dict):
+            if BLOB_KEY in v:          # already an externalized blob-ref → leave intact (idempotent)
+                return v
             return {k: walk(x) for k, x in v.items()}
         if isinstance(v, list):
             return [walk(x) for x in v]
@@ -39,4 +44,5 @@ def shrink_value(obj, threshold=DEFAULT_THRESHOLD, preview_chars=DEFAULT_PREVIEW
 
 
 def blob_path(sha, blob_dir):
+    """Filesystem path for a content-addressed blob (sha is a 64-char sha256 hex)."""
     return Path(blob_dir) / sha[:2] / f"{sha}.gz"
