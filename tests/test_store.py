@@ -200,7 +200,6 @@ def test_compact_all_skips_most_recent(tmp_path):
     blobs = tmp_path / "blobs"
     _write_jsonl(audit / "old.jsonl", [{"tool_name": "Read", "tool_input": {}}])
     _write_jsonl(audit / "active.jsonl", [{"tool_name": "Read", "tool_input": {}}])
-    import os, time
     old = time.time() - 100
     os.utime(audit / "old.jsonl", (old, old))
     done = store.compact_all(audit, blobs, threshold=2048)
@@ -208,3 +207,29 @@ def test_compact_all_skips_most_recent(tmp_path):
     assert (audit / "active.jsonl").exists()           # active untouched
     assert not (audit / "active.jsonl.gz").exists()
     assert done == ["old"]
+
+
+def test_compact_session_empty_session(tmp_path):
+    audit = tmp_path / "audit"; audit.mkdir()
+    blobs = tmp_path / "blobs"
+    (audit / "s1.jsonl").write_text("")          # session file with zero events
+    n = store.compact_session("s1", audit, blobs, threshold=2048)
+    assert n == 0
+    assert (audit / "s1.jsonl.gz").exists()       # valid (empty) gz written
+    assert not (audit / "s1.jsonl").exists()       # plain removed
+    assert list(store.iter_events("s1", audit)) == []   # reads back as no events
+
+
+def test_compact_all_skips_already_compacted_active(tmp_path):
+    import gzip as _gz
+    audit = tmp_path / "audit"; audit.mkdir()
+    blobs = tmp_path / "blobs"
+    # an older plain session + a newer already-compacted (gz-only) session
+    _write_jsonl(audit / "old.jsonl", [{"tool_name": "Read", "tool_input": {}}])
+    (audit / "active.jsonl.gz").write_bytes(_gz.compress(b'{"tool_name": "Read", "tool_input": {}}\n'))
+    old = time.time() - 100
+    os.utime(audit / "old.jsonl", (old, old))
+    done = store.compact_all(audit, blobs, threshold=2048)
+    # active (gz, most recent) is skipped; old plain gets compacted; gz-only never re-compacted
+    assert done == ["old"]
+    assert (audit / "old.jsonl.gz").exists()
