@@ -10,6 +10,7 @@ from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 
+from . import store
 from .models import Action, AgentRecord
 from .config import load_rules
 from .permissions import load_allow_rules
@@ -109,12 +110,15 @@ class LiveMonitor:
 
 def _resolve_session_file(audit_dir, session_id):
     audit_dir = Path(audit_dir)
-    if session_id:
-        return audit_dir / f"{session_id}.jsonl"
-    if not audit_dir.exists():
-        return None
-    files = sorted(audit_dir.glob("*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True)
-    return files[0] if files else None
+    if not session_id:
+        session_id = store.latest_session(audit_dir)
+        if session_id is None:
+            return None
+    gz = audit_dir / f"{session_id}.jsonl.gz"
+    plain = audit_dir / f"{session_id}.jsonl"
+    # Live tailing follows the active plain file; fall back to the compacted gz so a
+    # historical/compacted session still resolves (tailing a gz is out of scope).
+    return plain if plain.exists() else gz
 
 
 def tail_events(audit_dir, session_id=None, poll_interval=0.5, _max_polls=None):
