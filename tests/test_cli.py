@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
-from agent_pd.cli import main, build_parser, _cmd_watch
+from agent_pd.cli import main, build_parser, _cmd_watch, _cmd_verify
+from agent_pd import integrity, store
 
 
 def test_judge_dry_run_reports_estimate(tmp_path, capsys):
@@ -119,6 +120,127 @@ def test_list_includes_compacted_sessions(tmp_path, capsys):
     rc = main(["list", "--audit-dir", str(audit), "--projects-dir", str(projects)])
     assert rc == 0
     assert "a" in capsys.readouterr().out.split()
+
+
+# ---- pd verify ----
+
+def _write_chained_session(audit, sid, n, key=None):
+    """Write a valid chained <sid>.jsonl + matching head; return the events."""
+    audit.mkdir(parents=True, exist_ok=True)
+    prev_hex, prev_seq = integrity.GENESIS, 0
+    events = []
+    lines = []
+    for i in range(1, n + 1):
+        base = {"event": "PostToolUse", "session_id": sid,
+                "tool_name": "Read", "tool_input": {"n": i}}
+        e = integrity.next_link(prev_hex, prev_seq, base, key)
+        events.append(e)
+        lines.append(json.dumps(e))
+        prev_hex, prev_seq = e[integrity.CHAIN_KEY], e[integrity.SEQ_KEY]
+    (audit / f"{sid}.jsonl").write_text("\n".join(lines) + "\n")
+    integrity.write_head(sid, audit, prev_seq, prev_hex)
+    return events
+
+
+def test_verify_subcommand_parses():
+    args = build_parser().parse_args(["verify", "--session", "s1", "--all"])
+    assert args.func is _cmd_verify
+    assert args.session == "s1" and args.all_sessions is True
+
+
+def test_verify_intact_session(tmp_path, capsys):
+    audit = tmp_path / "audit"
+    _write_chained_session(audit, "good", 3)
+    rc = main(["verify", "--session", "good", "--audit-dir", str(audit)])
+    assert rc == 0
+    assert "intact" in capsys.readouterr().out.lower()
+
+
+def test_verify_no_sessions(tmp_path, capsys):
+    audit = tmp_path / "audit"; audit.mkdir()
+    rc = main(["verify", "--audit-dir", str(audit)])
+    assert rc == 0
+    assert "no sessions" in capsys.readouterr().out.lower()
+
+
+def test_verify_tampered_session(tmp_path, capsys):
+    audit = tmp_path / "audit"
+    _write_chained_session(audit, "bad", 4)
+    # flip a middle line's content on disk (seq 2)
+    path = audit / "bad.jsonl"
+    lines = path.read_text().splitlines()
+    ev = json.loads(lines[1])
+    ev["tool_input"]["n"] = 999
+    lines[1] = json.dumps(ev)
+    path.write_text("\n".join(lines) + "\n")
+    rc = main(["verify", "--session", "bad", "--audit-dir", str(audit)])
+    assert rc == 2
+    out = capsys.readouterr().out.lower()
+    assert "tamper" in out and "2" in out
+
+
+def test_verify_truncated_session(tmp_path, capsys):
+    audit = tmp_path / "audit"
+    _write_chained_session(audit, "trunc", 3)
+    # head claims seq 5 but the log only ends at seq 3
+    integrity.write_head("trunc", audit, 5, "deadbeef")
+    rc = main(["verify", "--session", "trunc", "--audit-dir", str(audit)])
+    assert rc == 2
+    out = capsys.readouterr().out.lower()
+    assert "truncat" in out
+
+
+def test_verify_legacy_session(tmp_path, capsys):
+    audit = tmp_path / "audit"; audit.mkdir()
+    # lines without chain, no head
+    (audit / "old.jsonl").write_text(
+        json.dumps({"event": "PostToolUse", "tool_name": "Read"}) + "\n")
+    rc = main(["verify", "--session", "old", "--audit-dir", str(audit)])
+    assert rc == 0
+    assert "legacy" in capsys.readouterr().out.lower()
+
+
+def test_verify_all_flags_tampered(tmp_path, capsys):
+    audit = tmp_path / "audit"
+    _write_chained_session(audit, "good", 2)
+    _write_chained_session(audit, "bad", 3)
+    # tamper bad
+    path = audit / "bad.jsonl"
+    lines = path.read_text().splitlines()
+    ev = json.loads(lines[1]); ev["tool_input"]["n"] = 777
+    lines[1] = json.dumps(ev)
+    path.write_text("\n".join(lines) + "\n")
+    rc = main(["verify", "--all", "--audit-dir", str(audit)])
+    assert rc == 2
+    out = capsys.readouterr().out.lower()
+    assert "good" in out and "bad" in out
+
+
+def test_verify_survives_compaction(tmp_path, capsys):
+    audit = tmp_path / "audit"
+    _write_chained_session(audit, "comp", 4)
+    n = store.compact_session("comp", audit)
+    assert n == 4
+    assert (audit / "comp.jsonl.gz").exists()
+    assert not (audit / "comp.jsonl").exists()
+    rc = main(["verify", "--session", "comp", "--audit-dir", str(audit)])
+    assert rc == 0
+    assert "intact" in capsys.readouterr().out.lower()
+
+
+def test_verify_keyed(tmp_path, capsys, monkeypatch):
+    audit = tmp_path / "audit"
+    monkeypatch.setenv("PD_AUDIT_KEY", "s3cr3t")
+    _write_chained_session(audit, "keyed", 3, key=integrity.audit_key())
+    # with key set -> intact
+    rc = main(["verify", "--session", "keyed", "--audit-dir", str(audit)])
+    assert rc == 0
+    assert "intact" in capsys.readouterr().out.lower()
+    # without key -> tamper (chain recomputes differently)
+    monkeypatch.delenv("PD_AUDIT_KEY")
+    rc = main(["verify", "--session", "keyed", "--audit-dir", str(audit)])
+    assert rc == 2
+    assert "tamper" in capsys.readouterr().out.lower()
 
 
 def test_compact_with_prune_older_than(tmp_path, capsys):
