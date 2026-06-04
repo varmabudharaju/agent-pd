@@ -243,6 +243,44 @@ def test_verify_keyed(tmp_path, capsys, monkeypatch):
     assert "tamper" in capsys.readouterr().out.lower()
 
 
+def test_verify_head_mismatch_rechain(tmp_path, capsys):
+    # Re-chain attack: the log tail was rewritten but the head was left with the
+    # SAME seq and a STALE/WRONG chain hex. verify must catch the mismatch.
+    audit = tmp_path / "audit"
+    _write_chained_session(audit, "rechain", 3)
+    last_seq = 3
+    integrity.write_head("rechain", audit, last_seq, "deadbeefwronghex")
+    rc = main(["verify", "--session", "rechain", "--audit-dir", str(audit)])
+    assert rc == 2
+    out = capsys.readouterr().out.lower()
+    assert "head" in out and ("mismatch" in out or "rewritten" in out)
+
+
+def test_verify_benign_lagging_head_not_flagged(tmp_path, capsys):
+    # Crash-before-head case: head lags by one seq (head_seq < last_seq). This is
+    # benign and must NOT trip the head-mismatch check; verify reports intact.
+    audit = tmp_path / "audit"
+    events = _write_chained_session(audit, "lag", 3)
+    # rewind head to seq 2 with its correct prior chain
+    prior = events[1]
+    integrity.write_head("lag", audit, prior[integrity.SEQ_KEY],
+                         prior[integrity.CHAIN_KEY])
+    rc = main(["verify", "--session", "lag", "--audit-dir", str(audit)])
+    assert rc == 0
+    out = capsys.readouterr().out.lower()
+    assert "intact" in out
+    assert "head" not in out  # no head-mismatch complaint
+
+
+def test_verify_healthy_head_matches(tmp_path, capsys):
+    # head_seq == last_seq AND head_hex == last_chain -> intact.
+    audit = tmp_path / "audit"
+    _write_chained_session(audit, "healthy", 4)
+    rc = main(["verify", "--session", "healthy", "--audit-dir", str(audit)])
+    assert rc == 0
+    assert "intact" in capsys.readouterr().out.lower()
+
+
 def test_compact_with_prune_older_than(tmp_path, capsys):
     import gzip as _gz, os, time
     audit = tmp_path / "audit"; audit.mkdir()

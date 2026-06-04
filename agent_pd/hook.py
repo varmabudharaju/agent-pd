@@ -105,46 +105,59 @@ def write_event(event: dict, audit_dir: Path = None) -> None:
     session_id = event.get("session_id", "")
     path = audit_path(session_id, audit_dir=audit_dir)
 
+    sid = session_id or "unknown-session"
+    lock_path = audit_dir / f"{sid}.lock"
+
+    lock_fd = None
+    # Best-effort exclusive lock. If fcntl/flock is unavailable or errors, proceed
+    # WITHOUT the lock rather than dropping the event.
     try:
-        sid = session_id or "unknown-session"
-        lock_path = audit_dir / f"{sid}.lock"
-
+        if fcntl is not None:
+            lock_fd = open(lock_path, "w")
+            fcntl.flock(lock_fd.fileno(), fcntl.LOCK_EX)
+    except Exception:
         lock_fd = None
-        # Best-effort exclusive lock. If fcntl/flock is unavailable or errors, proceed
-        # WITHOUT the lock rather than dropping the event.
-        try:
-            if fcntl is not None:
-                lock_fd = open(lock_path, "w")
-                fcntl.flock(lock_fd.fileno(), fcntl.LOCK_EX)
-        except Exception:
-            lock_fd = None
 
-        try:
-            prev_hex, prev_seq = integrity.read_head(session_id, audit_dir)
-            # Head missing/corrupt but the log already has lines -> recover from the
-            # last line so the chain continues across a deleted head file.
-            if prev_seq == 0 and prev_hex == integrity.GENESIS and path.exists():
-                prev_hex, prev_seq = integrity.last_link_from_file(session_id, audit_dir)
+    wrote = False
+    try:
+        prev_hex, prev_seq = integrity.read_head(session_id, audit_dir)
+        # Head missing/corrupt but the log already has lines -> recover from the
+        # last line so the chain continues across a deleted head file.
+        if prev_seq == 0 and prev_hex == integrity.GENESIS and path.exists():
+            prev_hex, prev_seq = integrity.last_link_from_file(session_id, audit_dir)
 
-            chained = integrity.next_link(
-                prev_hex, prev_seq, event, key=integrity.audit_key()
-            )
-            _append_line(path, chained)
+        chained = integrity.next_link(
+            prev_hex, prev_seq, event, key=integrity.audit_key()
+        )
+        # Append exactly once. Once this line lands, the event is recorded — do NOT
+        # let a later head-write failure trigger the unchained fallback (that would
+        # duplicate the event AND leave a permanent unchained-after-chain tamper).
+        _append_line(path, chained)
+        wrote = True
+        try:
             integrity.write_head(
                 session_id, audit_dir, chained[SEQ_KEY], chained[CHAIN_KEY]
             )
-        finally:
-            if lock_fd is not None:
-                try:
-                    fcntl.flock(lock_fd.fileno(), fcntl.LOCK_UN)
-                except Exception:
-                    pass
-                try:
-                    lock_fd.close()
-                except Exception:
-                    pass
+        except Exception:
+            # Benign: a lagging head is detected by verify as last_seq > head_seq
+            # (the one-directional truncation check), never as a tamper.
+            pass
     except Exception:
-        # Chaining failed somewhere: never lose the event — append it unchained.
+        pass
+    finally:
+        if lock_fd is not None:
+            try:
+                fcntl.flock(lock_fd.fileno(), fcntl.LOCK_UN)
+            except Exception:
+                pass
+            try:
+                lock_fd.close()
+            except Exception:
+                pass
+
+    if not wrote:
+        # Chaining/append failed before the line landed: never lose the event —
+        # append it unchained. A discontinuity here is the acceptable tradeoff.
         try:
             _append_line(path, event)
         except Exception:

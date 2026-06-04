@@ -225,6 +225,22 @@ def test_write_event_crash_safe_fallback(tmp_path, monkeypatch):
     assert SEQ_KEY not in evs[0]  # unchained fallback
 
 
+def test_write_event_head_write_failure_no_dup(tmp_path, monkeypatch):
+    # If write_head raises AFTER the chained append succeeds, the event must NOT be
+    # re-appended (no duplicate, no unchained tail) and the chain must stay intact —
+    # only the head lags behind, which verify treats as benign.
+    def boom(*a, **k):
+        raise RuntimeError("head disk full")
+    monkeypatch.setattr(integrity, "write_head", boom)
+    for i in range(3):
+        write_event({"event": "PostToolUse", "session_id": "hd", "n": i},
+                    audit_dir=tmp_path)
+    evs = _read_events(audit_path("hd", audit_dir=tmp_path))
+    assert len(evs) == 3                      # exactly one line per call, no dups
+    assert [e[SEQ_KEY] for e in evs] == [1, 2, 3]
+    assert verify_events(evs)["ok"] is True   # chain intact; only the head lags
+
+
 def test_main_returns_zero_on_chain_error(tmp_path, monkeypatch):
     def boom(*a, **k):
         raise RuntimeError("chain broke")
