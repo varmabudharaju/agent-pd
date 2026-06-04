@@ -120,3 +120,8 @@ pd judge --run --model sonnet --max 20
 Claude subscription (the same auth Claude Code uses) rather than the pay-per-token API.
 With neither a `claude` CLI nor API credentials available, `pd judge --run` degrades
 gracefully.
+
+## License
+
+[Apache License 2.0](LICENSE) © varma. Free to use, modify, and distribute (including
+commercially); retain the copyright and license notice. Includes a patent grant.
