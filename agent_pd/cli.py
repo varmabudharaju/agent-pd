@@ -233,7 +233,12 @@ def _cmd_sink_status(args) -> int:
         last = max((e.get(integrity.SEQ_KEY, 0)
                     for e in store.iter_events(sid, args.audit_dir)), default=0)
         line = f"sink: {sid} — {forwarded}/{last} forwarded"
-        if last == 0:
+        if forwarded > last:
+            # more shipped off-host than exist locally => local truncation/tamper
+            missing = forwarded - last
+            line += (f" (⚠ remote ahead — {missing} local event(s) missing; "
+                     "possible local tampering)")
+        elif last == 0:
             line += " (no integrity data)"
         elif forwarded < last:
             line += f" ({last - forwarded} pending)"

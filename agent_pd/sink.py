@@ -23,6 +23,7 @@ import json
 import os
 import socket
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -99,11 +100,19 @@ class Sink:
 
 
 def _ndjson(events) -> str:
-    """Compact NDJSON: one compact json object per line."""
-    return "".join(
-        json.dumps(e, separators=(",", ":"), ensure_ascii=False) + "\n"
-        for e in events
-    )
+    """Compact NDJSON: one compact json object per line.
+
+    A non-serializable event raises ``SinkError`` (not a bare TypeError/
+    ValueError) so ``pd sink push`` can never crash uncaught — in practice
+    events are JSON-from-disk, but be defensive.
+    """
+    try:
+        return "".join(
+            json.dumps(e, separators=(",", ":"), ensure_ascii=False) + "\n"
+            for e in events
+        )
+    except (TypeError, ValueError) as e:
+        raise SinkError(f"event not JSON-serializable: {e}") from e
 
 
 class FileSink(Sink):
@@ -130,14 +139,41 @@ class FileSink(Sink):
         return len(events)
 
 
+# Hosts where http:// is considered local-only (safe to carry a token over).
+_LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+
+
+class _NoFollowRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Refuse to auto-follow redirects.
+
+    A redirecting collector could 3xx us to another host and urllib would
+    re-send the ``Authorization: Bearer <token>`` header to that host = a
+    cross-host credential leak. Returning None from ``redirect_request`` makes
+    urllib raise the 3xx as an HTTPError instead of chasing it.
+    """
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+# Opener that uses the no-follow handler (built once, reused).
+_NO_REDIRECT_OPENER = urllib.request.build_opener(_NoFollowRedirectHandler())
+
+
 class HttpSink(Sink):
     """POST events as NDJSON to a remote collector.
 
     Body = newline-joined compact JSON (NDJSON), Content-Type
     ``application/x-ndjson``, plus ``Authorization: Bearer <token>`` when a token
-    is set. A 2xx response is success; any non-2xx, URLError, timeout, or socket
-    error raises SinkError so the caller does NOT advance state and retries on
-    the next push. Never hangs past ``timeout``.
+    is set. A 2xx response is success; any non-2xx (including 3xx — redirects
+    are NOT followed), URLError, timeout, or socket error raises SinkError so
+    the caller does NOT advance state and retries on the next push. Never hangs
+    past ``timeout``.
+
+    Credential safety: if a token is set we refuse to send it over cleartext
+    ``http://`` to a non-loopback host (use ``https://`` or unset the token),
+    and we never auto-follow redirects (a 3xx could leak the Authorization
+    header to another host).
     """
 
     def __init__(self, url, token=None, timeout: float = _DEFAULT_TIMEOUT):
@@ -146,6 +182,15 @@ class HttpSink(Sink):
         self.timeout = timeout
 
     def send(self, events: list) -> int:
+        # Guard the credential BEFORE serializing or touching the network.
+        if self.token:
+            parsed = urllib.parse.urlparse(self.url)
+            host = (parsed.hostname or "").lower()
+            if parsed.scheme != "https" and host not in _LOOPBACK_HOSTS:
+                raise SinkError(
+                    "refusing to send PD_SINK_TOKEN over cleartext http:// to "
+                    "a non-loopback host (use https://, or unset the token)"
+                )
         body = _ndjson(events).encode("utf-8")
         headers = {"Content-Type": "application/x-ndjson"}
         if self.token:
@@ -154,12 +199,12 @@ class HttpSink(Sink):
             self.url, data=body, headers=headers, method="POST"
         )
         try:
-            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+            with _NO_REDIRECT_OPENER.open(req, timeout=self.timeout) as resp:
                 status = getattr(resp, "status", None) or resp.getcode()
                 if not (200 <= status < 300):
                     raise SinkError(f"http sink status {status}")
         except urllib.error.HTTPError as e:
-            # non-2xx that urllib raises as an error (4xx/5xx)
+            # non-2xx that urllib raises as an error (3xx not-followed, 4xx, 5xx)
             raise SinkError(f"http sink status {e.code}") from e
         except (urllib.error.URLError, socket.timeout, OSError) as e:
             raise SinkError(f"http sink transport error: {e}") from e

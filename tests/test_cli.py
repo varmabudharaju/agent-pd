@@ -424,6 +424,23 @@ def test_sink_push_failure_rc2_no_advance(tmp_path, capsys, monkeypatch):
     assert "0/3 forwarded" in capsys.readouterr().out
 
 
+def test_sink_status_remote_ahead_flags_tampering(tmp_path, capsys, monkeypatch):
+    # forwarded_seq (off-host) is HIGHER than the local log => local truncation
+    # / tamper signal. Local log only has seq 1..2 but state says 5 forwarded.
+    audit = tmp_path / "audit"
+    _write_chained_session(audit, "s1", 2)
+    _unset_sink_env(monkeypatch)
+    sink.write_forwarded_seq("s1", audit, 5)
+
+    rc = main(["sink", "status", "--session", "s1", "--audit-dir", str(audit)])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "5/2 forwarded" in out
+    assert "remote ahead" in out
+    assert "missing" in out
+    assert "3 local event" in out  # 5 - 2 = 3 missing
+
+
 def test_compact_with_prune_older_than(tmp_path, capsys):
     import gzip as _gz, os, time
     audit = tmp_path / "audit"; audit.mkdir()
