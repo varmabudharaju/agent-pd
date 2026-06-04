@@ -70,3 +70,75 @@ def test_extract_paths_env_prefix_and_pipes():
     # second pipe segment never inspected).
     assert scope.extract_paths("FOO=bar cat data.txt") == ["data.txt"]
     assert scope.extract_paths("echo x | cat secret") == ["secret"]
+
+
+# --- Evasion 1: interpreter -c/-e one-liners hide the real file access ---
+
+def test_extract_paths_interpreter_bash_c():
+    assert "/etc/shadow" in scope.extract_paths("bash -c 'cat /etc/shadow'")
+
+
+def test_extract_paths_interpreter_sh_c():
+    assert "/etc/shadow" in scope.extract_paths("sh -c 'cat /etc/shadow'")
+
+
+def test_extract_paths_interpreter_python_c():
+    assert "/etc/shadow" in scope.extract_paths('python3 -c "open(\'/etc/shadow\').read()"')
+
+
+def test_extract_paths_interpreter_node_e():
+    assert "/etc/shadow" in scope.extract_paths(
+        'node -e "require(\'fs\').readFileSync(\'/etc/shadow\')"')
+
+
+def test_extract_paths_interpreter_ruby_e():
+    assert "/etc/shadow" in scope.extract_paths('ruby -e "File.read(\'/etc/shadow\')"')
+
+
+def test_extract_paths_interpreter_perl_e():
+    assert "/etc/shadow" in scope.extract_paths('perl -e \'open(F, "/etc/shadow")\'')
+
+
+def test_extract_paths_interpreter_does_not_over_recurse():
+    # one level only: a quoted nested interpreter call still surfaces the leaf path
+    paths = scope.extract_paths("bash -c 'cat ~/.ssh/id_rsa'")
+    assert os.path.expanduser("~/.ssh/id_rsa") in paths or "~/.ssh/id_rsa" in paths
+
+
+# --- Evasion 2: $VAR path indirection ---
+
+def test_extract_paths_var_assignment_segment():
+    assert "/etc/shadow" in scope.extract_paths("TARGET=/etc/shadow; cat $TARGET")
+
+
+def test_extract_paths_var_assignment_env_prefix():
+    assert "/etc/shadow" in scope.extract_paths("FOO=/etc/shadow cat $FOO")
+
+
+def test_extract_paths_var_assignment_braced():
+    assert "/etc/shadow" in scope.extract_paths("TARGET=/etc/shadow; cat ${TARGET}")
+
+
+def test_extract_paths_unresolvable_var_does_not_crash():
+    # $UNKNOWN is not an assignment we recorded; must not crash, just left/dropped
+    res = scope.extract_paths("cat $UNKNOWN")
+    assert isinstance(res, list)
+
+
+# --- Evasion 3: in-project symlink to a sensitive dir (realpath) ---
+
+def test_classify_follows_symlink_outside(tmp_path):
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    secret = tmp_path / "secret"
+    secret.mkdir()
+    (secret / "id_rsa").write_text("k")
+    link = proj / "link"
+    try:
+        os.symlink(str(secret), str(link))
+    except OSError:
+        import pytest
+        pytest.skip("symlinks unsupported")
+    abspath = scope.resolve(str(link / "id_rsa"), str(proj))
+    kind, _ = scope.classify(abspath, str(proj), [], [], project_boundary=True)
+    assert kind == "boundary"

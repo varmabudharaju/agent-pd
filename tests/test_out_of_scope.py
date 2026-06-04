@@ -150,6 +150,74 @@ def test_nonsensitive_boundary_still_downgraded_by_matching_rule():
     assert "permitted by allow-rule" in offs[0].evidence
 
 
+def test_interpreter_oneliner_surfaces_boundary_path():
+    # Evasion 1 end-to-end: python3 -c hides /etc/shadow inside the script string.
+    # /etc/shadow is outside /proj -> boundary (high), no longer invisible.
+    rules = load_rules(None)
+    rec = _rec([Action(agent_id="a1", tool_name="Bash",
+                       tool_input={"command": 'python3 -c "open(\'/etc/shadow\').read()"'})])
+    offs = out_of_scope.detect(rec, rules)
+    assert len(offs) == 1
+    assert offs[0].severity == "high"
+    assert "outside project" in offs[0].evidence
+
+
+def test_interpreter_oneliner_surfaces_sensitive_path():
+    # Evasion 1 end-to-end with a default-sensitive path inside the script body.
+    import os
+    rules = load_rules(None)
+    cmd = "ruby -e \"File.read('%s')\"" % os.path.expanduser("~/.ssh/id_rsa")
+    rec = _rec([Action(agent_id="a1", tool_name="Bash", tool_input={"command": cmd})])
+    offs = out_of_scope.detect(rec, rules)
+    assert len(offs) == 1
+    assert offs[0].severity == "critical"
+    assert "sensitive" in offs[0].evidence
+
+
+def test_var_indirection_segment_surfaces_path():
+    # Evasion 2 end-to-end: TARGET=/etc/shadow; cat $TARGET
+    rules = load_rules(None)
+    rec = _rec([Action(agent_id="a1", tool_name="Bash",
+                       tool_input={"command": "TARGET=/etc/shadow; cat $TARGET"})])
+    offs = out_of_scope.detect(rec, rules)
+    assert len(offs) == 1
+    assert offs[0].severity == "high"
+    assert "outside project" in offs[0].evidence
+
+
+def test_var_indirection_env_prefix_surfaces_sensitive_path():
+    import os
+    rules = load_rules(None)
+    target = os.path.expanduser("~/.ssh/id_rsa")
+    rec = _rec([Action(agent_id="a1", tool_name="Bash",
+                       tool_input={"command": "FOO=%s cat $FOO" % target})])
+    offs = out_of_scope.detect(rec, rules)
+    assert len(offs) == 1
+    assert offs[0].severity == "critical"
+
+
+def test_symlink_out_of_project_flagged(tmp_path):
+    import os as _os
+    import pytest
+    proj = tmp_path / "proj"
+    (proj / ".git").mkdir(parents=True)
+    secret = tmp_path / "secret"
+    secret.mkdir()
+    (secret / "secret").write_text("k")
+    link = proj / "link"
+    try:
+        _os.symlink(str(secret), str(link))
+    except OSError:
+        pytest.skip("symlinks unsupported")
+    rules = load_rules(None)
+    rec = AgentRecord(agent_id="a1", agent_type="Explore", brief="b", cwd=str(proj),
+                      actions=[Action(agent_id="a1", tool_name="Read",
+                                      tool_input={"file_path": str(link / "secret")})])
+    offs = out_of_scope.detect(rec, rules)
+    assert len(offs) == 1
+    assert "outside project" in offs[0].evidence
+
+
 def test_detector_can_be_disabled_via_boundary_and_empty_allowlist():
     rules = replace(load_rules(None), project_boundary=False, scope_dirs=[], sensitive_patterns=[])
     rec = _rec([Action(agent_id="a1", tool_name="Write",
