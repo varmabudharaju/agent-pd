@@ -8,6 +8,7 @@ from .detectors import run_detectors
 from .report import render_json, render_markdown
 from .hook import DEFAULT_AUDIT_DIR as HOOK_AUDIT_DIR
 from . import store
+from . import integrity
 
 
 def _cmd_report(args) -> int:
@@ -123,6 +124,57 @@ def _cmd_compact(args) -> int:
     return 0
 
 
+def _verify_one(sid, audit_dir) -> tuple[int, str]:
+    """Verify a single session. Return (rc, message). rc 0 = ok, 2 = tamper/truncation."""
+    events = list(store.iter_events(sid, audit_dir))
+    result = integrity.verify_events(events, key=integrity.audit_key())
+
+    if not result["ok"]:
+        return 2, (f"✗ TAMPER DETECTED — chain breaks at seq "
+                   f"{result['broken_at']} ({result['reason']})")
+
+    # last verified seq = max seq among chained events, else 0
+    last_seq = max((e[integrity.SEQ_KEY] for e in events
+                    if integrity.SEQ_KEY in e), default=0)
+    _, head_seq = integrity.read_head(sid, audit_dir)
+
+    if result["verified"] == 0 and head_seq == 0:
+        return 0, ("⚠ no integrity data — this session predates "
+                   "hash-chaining (legacy)")
+
+    if last_seq < head_seq:
+        missing = head_seq - last_seq
+        return 2, (f"✗ TRUNCATED — head recorded seq {head_seq} but log ends "
+                   f"at seq {last_seq} ({missing} event(s) missing from the tail)")
+
+    msg = f"✓ chain intact — {result['verified']} event(s) verified"
+    if result["legacy"]:
+        msg += f", {result['legacy']} legacy (pre-chain)"
+    return 0, msg
+
+
+def _cmd_verify(args) -> int:
+    if args.all_sessions:
+        sessions = store.list_sessions(args.audit_dir)
+        if not sessions:
+            print("no sessions found")
+            return 0
+        worst = 0
+        for sid in sessions:
+            rc, msg = _verify_one(sid, args.audit_dir)
+            print(f"{sid}: {msg}")
+            worst = max(worst, rc)
+        return worst
+
+    sid = args.session or store.latest_session(args.audit_dir)
+    if not sid:
+        print("no sessions found")
+        return 0
+    rc, msg = _verify_one(sid, args.audit_dir)
+    print(msg)
+    return rc
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="pd", description="Police department for Claude Code subagents")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -183,6 +235,12 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("--rules", default=None)
     c.add_argument("--audit-dir", default=DEFAULT_AUDIT_DIR)
     c.set_defaults(func=_cmd_compact)
+
+    v = sub.add_parser("verify", help="verify the audit-log hash-chain (tamper/truncation detection)")
+    v.add_argument("--session", default=None)
+    v.add_argument("--all", dest="all_sessions", action="store_true", help="verify every session")
+    v.add_argument("--audit-dir", default=DEFAULT_AUDIT_DIR)
+    v.set_defaults(func=_cmd_verify)
 
     return p
 
