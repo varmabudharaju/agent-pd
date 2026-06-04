@@ -100,3 +100,24 @@ def test_gather_tolerates_malformed_and_missing(tmp_path):
     assert any(r.agent_id == "a1" for r in records)
     # missing session file -> empty
     assert gather(session_id="nope", projects_dir=projects, audit_dir=audit) == []
+
+
+def test_gather_reads_compacted_session(tmp_path):
+    from agent_pd import store
+    projects = tmp_path / "projects"; projects.mkdir()
+    audit = tmp_path / "audit"; audit.mkdir()
+    blobs = tmp_path / "blobs"
+    big = "C" * 5000
+    _audit(audit / "s1.jsonl", [
+        {"event": "PostToolUse", "session_id": "s1", "agent_id": "",
+         "tool_name": "Write", "tool_input": {"file_path": "/proj/app.py", "content": big},
+         "cwd": "/proj"},
+    ])
+    store.compact_session("s1", audit, blobs, threshold=2048)
+    records = gather(session_id="s1", projects_dir=projects, audit_dir=audit)
+    assert len(records) == 1
+    act = records[0].actions[0]
+    assert act.tool_name == "Write"
+    # the big content is now a blob ref but the path the detectors need is intact
+    assert act.tool_input["file_path"] == "/proj/app.py"
+    assert act.tool_input["content"]["_pd_blob"]
