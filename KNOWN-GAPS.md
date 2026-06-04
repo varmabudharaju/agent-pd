@@ -8,6 +8,49 @@ Legend: 🐞 confirmed bug · ⚠️ heuristic/limitation · 📋 backlog/v2 · 
 
 ---
 
+## ✅ Shipped on `fix/security-hardening` (security audit + fixes)
+
+A focused pass that closed a class of **under-flagging / data-integrity** holes — places
+where a real crime could slip past as `info` or go uncounted. Tests 155 → 347.
+
+- **Faithful permission matching.** Allow-rule matching now mirrors Claude Code's real
+  semantics instead of a naïve `startswith`: shell-operator splitting (a `Bash(git:*)`
+  rule no longer authorizes `git status && rm -rf ~`), command-substitution `$(...)` /
+  backtick extraction, redirect targets treated as a separate authorization (a command
+  rule can't license `> ~/.ssh/authorized_keys`), word-boundary prefix matching
+  (`npm install:*` ≠ `npm installmalware`), gitignore-style globs (`*` does **not** cross
+  `/`, `**` does), spec stripping, anchoring, process-wrapper stripping. Bias is
+  conservative: ambiguity → **not** permitted.
+- **Sensitive paths are immune to downgrade.** A sensitive-path offense is **never**
+  reduced to `info` by an allow-rule, no matter what the user configured.
+- **Control-file protection (`self_permission`).** Now flags **any** agent write to its
+  own control files — `.claude/settings*.json`, `.claude/agents/*.md`, `pd-rules*.yaml` —
+  via **any** method (`Write`/`Edit`/`NotebookEdit`, or Bash `cp`/`mv`/`tee`/`sed`/
+  `python`/`base64`/redirect/bare-name), regardless of content. Closes the hook-removal
+  and opaque-write evasions (no longer requires seeing a literal permission key).
+- **Scope recursion.** `out_of_scope` now recurses into interpreter one-liners
+  (`bash -c`, `python3 -c`, `node -e`), expands single-level `$VAR` assignments, follows
+  symlinks (best-effort), and captures bare-basename sensitive files inside script bodies.
+- **`permission_bypass` regex engine, two tiers.** Replaced literal substring matching
+  with regex and split the dangerous set in two: **never-downgrade** patterns
+  (categorically catastrophic — `rm -rf /` incl. long-flag/quoted forms, `rm -rf ~`/
+  `$HOME`, `--no-preserve-root`, fork bomb, `dd of=/dev/`, `mkfs`, `curl|sh`) stay
+  critical even under a broad allow-rule; **escalation** patterns (sudo, chmod 777/setuid,
+  chown root, shred, cwd-wipe `rm -rf .`/`*`) are downgradable only by a precise allow-rule.
+  Routine `rm -rf ./build` is not flagged.
+- **Richer hook capture.** The hook now records `denial_reason`, `tool_result`,
+  `permission_mode`, `transcript_path`, and an `_extra` passthrough for unknown fields; it
+  forces `decision=deny` on `PermissionDenied` even if a spoofed field says otherwise; it
+  logs errors to stderr — and still always exits 0.
+- **Store dedup.** `store.iter_events` dedups across the gz/plain compaction window (no
+  double-counted offenses) while preserving disjoint resume events.
+- **Broader sensitivity + case-insensitive allowlist.** `~/.claude` (including the pd audit
+  dir) and system credential files (`/etc/shadow`, `/etc/passwd`, `/etc/sudoers`,
+  `/etc/ssh`, `/root`, shell history) are sensitive. `agent_type` allowlist lookup is now
+  case-insensitive (no casing-evasion).
+
+---
+
 ## ✅ Shipped on `feat/scope-and-denial` (formerly "being fixed")
 
 - **Denial capture was broken.** `hook.build_event` only set `decision` from a
@@ -58,30 +101,23 @@ Legend: 🐞 confirmed bug · ⚠️ heuristic/limitation · 📋 backlog/v2 · 
 
 ## ⚠️ Heuristic limits / by-design
 
-- **Bash path extraction (new scope engine) is heuristic.** It catches literal paths
-  (`cat ../x`, `ls /etc`, `cd ..`, `find /`) but will miss paths built via shell variables,
-  `$(...)`, or command substitution, and can occasionally over-flag. Deterministic
-  file-tool checks remain exact. Specific edge cases surfaced during review:
-  - **`$VAR`-prefixed paths aren't expanded** by `classify`/`resolve` (only `~`/`~user`
-    are), so a `$VAR` that points at a sensitive path can slip past.
-  - **Operator split happens on the RAW string before shlex.** `scope.extract_paths`
-    splits compound commands by regex on the raw command string before tokenizing, so a
-    `|`/`;`/`&` *inside a quoted argument* can mis-segment the command. Rare, and the
-    mangled fragment almost always resolves inside the project so it seldom produces a
-    false offense. A more robust fix would shlex-tokenize once and split on operator tokens.
-  - **`~/.config` is broad for `critical`** and may be noisy (it holds lots of innocuous
-    app config) — consider narrowing it in tuning.
-- **Permission-aware severity (permissions.py) matches leniently.** When an allow-rule
-  matches, a flagged item is downgraded to `info` (permitted → FYI, not a crime). The
-  matching is deliberately lenient — it can only *under*-flag (downgrade a real crime to
-  info), never falsely escalate:
-  - **Bash allow-rule matching uses prefix `startswith` with no word boundary**, so
-    `Bash(npm install:*)` also matches `npm installfoo` — lenient-only (over-downgrades a
-    flagged item to info, never falsely escalates).
-  - **File-glob matching uses `fnmatch`**, whose `*` crosses `/`, so `Read(~/.config/**)`
-    matches any depth under `~/.config` (broader than Claude Code's real `*` vs `**`
-    distinction) — again lenient-only.
-  - **Allow-rules are read once per agent** at its first event (no mid-session reload).
+- **Bash path extraction is heuristic by nature.** It catches literal paths
+  (`cat ../x`, `ls /etc`, `cd ..`, `find /`), now recurses into interpreter one-liners,
+  expands single-level `$VAR` assignments, and resolves symlinks best-effort — but static
+  analysis cannot follow every dynamically-constructed path (see Residual limitations).
+  Deterministic file-tool checks remain exact.
+- **`~/.config` is broad for `critical`** and may be noisy (it holds lots of innocuous
+  app config) — consider narrowing it in tuning.
+- **Permission-aware severity (permissions.py) matches faithfully but still under-flags
+  by design.** When an allow-rule matches, a flagged item is downgraded to `info`
+  (permitted → FYI, not a crime). Matching is now faithful to Claude Code semantics
+  (word-boundary prefixes, gitignore globs, operator-split, redirect isolation), and
+  ambiguity resolves to *not permitted* — so the old over-downgrade holes (the `npm
+  install:*` ⇒ `npm installfoo` prefix over-match, the fnmatch `*`-crosses-`/` over-broad
+  glob) are closed. The residual risk is the opposite-and-acceptable one: a user who
+  writes a genuinely broad allow-rule legitimately downgrades matching crimes to `info`.
+  Sensitive paths and categorically-catastrophic commands are immune regardless.
+- **Allow-rules are read once per agent** at its first event (no mid-session reload).
 - **`off_task` cannot run on the main agent.** It needs a "brief," which only subagents
   have (`meta.json`). The main interactive session has no brief, so off-task detection
   doesn't apply there. A main-agent off-task signal would need a different anchor (e.g. the
@@ -91,6 +127,37 @@ Legend: 🐞 confirmed bug · ⚠️ heuristic/limitation · 📋 backlog/v2 · 
   hook records everything going forward.
 - **Concurrent appends** to one session file could in theory interleave a >4 KB tool input
   on one line; the reader skips malformed/partial lines. Harmless, documented.
+
+## ⚠️ Residual limitations (static-analysis inherent — document, can't fully close)
+
+These are the honest limits of a static, pattern-based detector. pd raises the bar; it is
+not a sandbox, and a determined adversary using obfuscation or indirection can evade it.
+
+- **Obfuscation / indirection evades static detection.** Multi-level `$VAR` chains
+  (`A=/etc/shadow; B=$A; cat $B` — only single-level expansion is followed), `$IFS` /
+  word-split tricks, two-step download-then-exec (`curl -o f url; sh f`), base64- or
+  eval-assembled commands, and dynamically-constructed paths can all slip past the
+  pattern matcher.
+- **Only `Write`/`Edit`/`NotebookEdit` and `Bash` are inspected for control-file writes.**
+  A filesystem MCP tool with a different tool name/shape could write `.claude/settings.json`
+  without tripping `self_permission`. The detector covers the tools an agent actually has by
+  default; a custom MCP write tool is a blind spot.
+- **Symlink resolution is best-effort.** The symlink must exist on disk at analysis time
+  for the target to be resolved; a symlink created and traversed within the same untracked
+  step may not resolve.
+- **`tool_result` is captured verbatim** and can be large; gzip compaction mitigates the
+  on-disk cost, but per-field truncation is a possible follow-up.
+- **`off_task` remains heuristic** (word-overlap) — use `pd judge` for trustworthy verdicts.
+  `~/.config` sensitivity is broad and can be noisy.
+
+## 📨 Deferred (architectural)
+
+- **No cryptographic integrity on the audit log.** An agent with `Bash` can still delete or
+  forge `~/.claude/pd/audit/*.jsonl`. Accessing the audit directory is now flagged
+  sensitive-critical (we *detect* the attempt), but pd does **not prevent** tampering and
+  has no tamper-evident log (HMAC, hash-chain, append-only WORM, or off-host shipping).
+  This is the most significant remaining architectural gap for a security product, and is
+  documented here as future work — not something the hardening pass closed.
 
 ## 📋 Backlog / v2
 
