@@ -143,3 +143,68 @@ def test_list_sessions_missing_dir_is_empty(tmp_path):
     missing = tmp_path / "does-not-exist"
     assert store.list_sessions(missing) == []
     assert store.latest_session(missing) is None
+
+
+def _read_gz_events(path):
+    with gzip.open(path, "rt", encoding="utf-8") as f:
+        return [json.loads(l) for l in f if l.strip()]
+
+
+def test_compact_session_externalizes_and_gzips(tmp_path):
+    audit = tmp_path / "audit"; audit.mkdir()
+    blobs = tmp_path / "blobs"
+    big = "Z" * 5000
+    _write_jsonl(audit / "s1.jsonl", [
+        {"event": "PostToolUse", "tool_name": "Write",
+         "tool_input": {"file_path": "x.py", "content": big}},
+    ])
+    store.compact_session("s1", audit, blobs, threshold=2048)
+    assert not (audit / "s1.jsonl").exists()           # original removed
+    assert (audit / "s1.jsonl.gz").exists()            # gz written
+    ev = _read_gz_events(audit / "s1.jsonl.gz")[0]
+    ref = ev["tool_input"]["content"]
+    assert ref["bytes"] == 5000 and ref["preview"] == "Z" * 500
+    assert store.get_blob(ref["_pd_blob"], blobs).decode() == big   # recoverable
+
+
+def test_compact_session_is_lossless_when_rehydrated(tmp_path):
+    audit = tmp_path / "audit"; audit.mkdir()
+    blobs = tmp_path / "blobs"
+    big = "Q" * 9000
+    original = {"event": "PostToolUse", "tool_name": "Write",
+               "tool_input": {"file_path": "a.py", "content": big}}
+    _write_jsonl(audit / "s1.jsonl", [original])
+    store.compact_session("s1", audit, blobs, threshold=2048)
+    ev = _read_gz_events(audit / "s1.jsonl.gz")[0]
+    ev["tool_input"]["content"] = store.get_blob(
+        ev["tool_input"]["content"]["_pd_blob"], blobs).decode("utf-8")
+    assert ev == original
+
+
+def test_compact_session_is_idempotent(tmp_path):
+    audit = tmp_path / "audit"; audit.mkdir()
+    blobs = tmp_path / "blobs"
+    _write_jsonl(audit / "s1.jsonl", [
+        {"tool_name": "Write", "tool_input": {"content": "W" * 5000}}])
+    store.compact_session("s1", audit, blobs, threshold=2048)
+    once = _read_gz_events(audit / "s1.jsonl.gz")
+    # second pass reads the .gz (no plain file), must reproduce the same events
+    store.compact_session("s1", audit, blobs, threshold=2048)
+    twice = _read_gz_events(audit / "s1.jsonl.gz")
+    assert once == twice
+    assert once[0]["tool_input"]["content"]["bytes"] == 5000
+
+
+def test_compact_all_skips_most_recent(tmp_path):
+    audit = tmp_path / "audit"; audit.mkdir()
+    blobs = tmp_path / "blobs"
+    _write_jsonl(audit / "old.jsonl", [{"tool_name": "Read", "tool_input": {}}])
+    _write_jsonl(audit / "active.jsonl", [{"tool_name": "Read", "tool_input": {}}])
+    import os, time
+    old = time.time() - 100
+    os.utime(audit / "old.jsonl", (old, old))
+    done = store.compact_all(audit, blobs, threshold=2048)
+    assert (audit / "old.jsonl.gz").exists()
+    assert (audit / "active.jsonl").exists()           # active untouched
+    assert not (audit / "active.jsonl.gz").exists()
+    assert done == ["old"]
