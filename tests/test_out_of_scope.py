@@ -218,6 +218,40 @@ def test_symlink_out_of_project_flagged(tmp_path):
     assert "outside project" in offs[0].evidence
 
 
+def test_bash_audit_tamper_flagged_critical():
+    # Tampering with the pd audit dir: redirect into ~/.claude/pd/audit/*.jsonl
+    # must be flagged out_of_scope CRITICAL (sensitive), not silently allowed.
+    rules = load_rules(None)
+    rec = _rec([Action(agent_id="a1", tool_name="Bash",
+                       tool_input={"command": "echo x > ~/.claude/pd/audit/s1.jsonl"})])
+    offs = out_of_scope.detect(rec, rules)
+    assert len(offs) == 1
+    assert offs[0].severity == "critical"
+    assert "sensitive" in offs[0].evidence
+
+
+def test_read_claude_settings_flagged_critical():
+    # Reading ~/.claude/settings.json from a project cwd is sensitive critical.
+    import os
+    rules = load_rules(None)
+    rec = _rec([Action(agent_id="a1", tool_name="Read",
+                       tool_input={"file_path": os.path.expanduser("~/.claude/settings.json")})])
+    offs = out_of_scope.detect(rec, rules)
+    assert len(offs) == 1
+    assert offs[0].severity == "critical"
+    assert "sensitive" in offs[0].evidence
+
+
+def test_project_local_dotclaude_not_sensitive():
+    # REGRESSION: a project-local <proj>/.claude/settings.json (project not in home)
+    # is NOT flagged sensitive by the ~/.claude rule. It is inside the project, so
+    # the out_of_scope detector should emit nothing for it.
+    rules = load_rules(None)
+    rec = _rec([Action(agent_id="a1", tool_name="Read",
+                       tool_input={"file_path": "/proj/.claude/settings.json"})])
+    assert out_of_scope.detect(rec, rules) == []
+
+
 def test_detector_can_be_disabled_via_boundary_and_empty_allowlist():
     rules = replace(load_rules(None), project_boundary=False, scope_dirs=[], sensitive_patterns=[])
     rec = _rec([Action(agent_id="a1", tool_name="Write",
