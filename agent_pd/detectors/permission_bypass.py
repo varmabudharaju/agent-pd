@@ -34,7 +34,8 @@ def detect(record, rules) -> list:
         blob = json.dumps(meaningful).lower()
         for p in patterns:
             if p.lower() in blob:
-                permitted = is_permitted("Bash", a.tool_input, None, allow)
+                permitted = is_permitted("Bash", a.tool_input, None, allow,
+                                         cwd=record.cwd)
                 esev = info if permitted else sev
                 note = " (permitted by allow-rule)" if permitted else ""
                 out.append(Offense(record.agent_id, record.agent_type, OFFENSE, esev, "high",
