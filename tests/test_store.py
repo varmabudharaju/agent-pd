@@ -38,6 +38,38 @@ def test_iter_events_merges_gz_then_plain_on_race(tmp_path):
     assert list(store.iter_events("s1", tmp_path)) == [{"i": 1}, {"i": 2}]
 
 
+def test_iter_events_dedups_compaction_window(tmp_path):
+    # During compaction both files briefly hold the SAME events (tmp.replace(gz) done,
+    # plain.unlink() not yet). Concatenation would yield each event twice -> double-counted.
+    _write_jsonl_gz(tmp_path / "s1.jsonl.gz", [{"i": 1}, {"i": 2}])
+    _write_jsonl(tmp_path / "s1.jsonl", [{"i": 1}, {"i": 2}])
+    assert list(store.iter_events("s1", tmp_path)) == [{"i": 1}, {"i": 2}]
+
+
+def test_iter_events_keeps_disjoint_resume_events(tmp_path):
+    # Resume case: session compacted (gz=old), then hook appends NEW events to a fresh plain.
+    # Disjoint sets -> both must be kept.
+    _write_jsonl_gz(tmp_path / "s1.jsonl.gz", [{"i": 1}])
+    _write_jsonl(tmp_path / "s1.jsonl", [{"i": 2}])
+    assert list(store.iter_events("s1", tmp_path)) == [{"i": 1}, {"i": 2}]
+
+
+def test_iter_events_partial_overlap(tmp_path):
+    # plain shares one event with gz and adds one new -> drop the shared, keep the new.
+    _write_jsonl_gz(tmp_path / "s1.jsonl.gz", [{"a": 1}, {"a": 2}])
+    _write_jsonl(tmp_path / "s1.jsonl", [{"a": 2}, {"a": 3}])
+    assert list(store.iter_events("s1", tmp_path)) == [{"a": 1}, {"a": 2}, {"a": 3}]
+
+
+def test_iter_events_intra_plain_duplicates_preserved(tmp_path):
+    # Two legitimately-identical lines within plain must BOTH be yielded (no within-file dedup).
+    _write_jsonl(tmp_path / "s1.jsonl", [{"x": 1}, {"x": 1}])
+    assert list(store.iter_events("s1", tmp_path)) == [{"x": 1}, {"x": 1}]
+    # With an UNRELATED gz present, plain's two identical lines are still both yielded.
+    _write_jsonl_gz(tmp_path / "s1.jsonl.gz", [{"y": 9}])
+    assert list(store.iter_events("s1", tmp_path)) == [{"y": 9}, {"x": 1}, {"x": 1}]
+
+
 def test_iter_events_tolerates_blank_and_bad_lines(tmp_path):
     (tmp_path / "s1.jsonl").write_text('{"i": 1}\n\nnot json\n{"i": 2}\n')
     assert list(store.iter_events("s1", tmp_path)) == [{"i": 1}, {"i": 2}]
@@ -182,6 +214,28 @@ def test_report_identical_raw_vs_compacted(tmp_path):
     assert offenses_for(comp) == raw_offenses
     # keystone: the self_permission offense IS detected (would be dropped by externalization)
     assert any(o[0] == "self_permission" for o in raw_offenses)
+
+
+def test_gather_no_double_count_during_compaction_window(tmp_path):
+    # End-to-end guard: leave BOTH gz and plain holding the SAME events (compaction window)
+    # and assert each Action appears exactly once -> offenses can't be double-counted.
+    from agent_pd.investigator import gather
+
+    projects = tmp_path / "projects"; projects.mkdir()
+    audit = tmp_path / "audit"; audit.mkdir()
+    events = [
+        {"event": "PostToolUse", "session_id": "s1", "agent_id": "",
+         "tool_name": "Bash", "tool_input": {"command": "echo hi"}, "cwd": "/proj"},
+        {"event": "PostToolUse", "session_id": "s1", "agent_id": "",
+         "tool_name": "Write", "tool_input": {"file_path": "/proj/a.txt", "content": "x"},
+         "cwd": "/proj"},
+    ]
+    _write_jsonl_gz(audit / "s1.jsonl.gz", events)
+    _write_jsonl(audit / "s1.jsonl", events)   # identical -> simulate the window
+
+    recs = gather(session_id="s1", projects_dir=projects, audit_dir=audit)
+    total_actions = sum(len(r.actions) for r in recs)
+    assert total_actions == len(events)        # 2, not 4
 
 
 def test_prune_sessions_by_age(tmp_path):
