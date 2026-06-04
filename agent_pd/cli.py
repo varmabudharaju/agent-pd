@@ -7,6 +7,9 @@ from .investigator import gather, _latest_session, DEFAULT_PROJECTS_DIR, DEFAULT
 from .detectors import run_detectors
 from .report import render_json, render_markdown
 from .hook import DEFAULT_AUDIT_DIR as HOOK_AUDIT_DIR
+from . import store
+
+DEFAULT_BLOB_DIR = Path.home() / ".claude" / "pd" / "blobs"
 
 
 def _cmd_report(args) -> int:
@@ -27,8 +30,7 @@ def _cmd_report(args) -> int:
 def _cmd_list(args) -> int:
     audit = Path(args.audit_dir)
     sessions = set()
-    if audit.exists():
-        sessions |= {p.stem for p in audit.glob("*.jsonl")}
+    sessions |= set(store.list_sessions(audit))
     for sub in Path(args.projects_dir).glob("*/*/subagents"):
         sessions.add(sub.parent.name)
     for s in sorted(sessions):
@@ -95,6 +97,48 @@ def _cmd_watch(args) -> int:
                  audit_dir=args.audit_dir, projects_dir=args.projects_dir)
 
 
+def _cmd_compact(args) -> int:
+    rules = load_rules(args.rules)
+    threshold = args.threshold or rules.storage["blob_threshold_bytes"]
+    preview = rules.storage["preview_chars"]
+    audit, blobs = Path(args.audit_dir), Path(args.blob_dir)
+    if args.dry_run:
+        if args.session:
+            targets = [args.session] if (audit / f"{args.session}.jsonl").exists() else []
+        else:
+            files = store._session_files(audit)
+            active = max(files)[1] if files else None
+            targets = [sid for _, sid in files
+                       if sid != active and (audit / f"{sid}.jsonl").exists()]
+        print(f"[dry run] would compact {len(targets)} session(s): "
+              f"{', '.join(sorted(set(targets))) or '(none)'} "
+              f"(threshold {threshold}B). re-run without --dry-run to apply.")
+        return 0
+    if args.session:
+        n = store.compact_session(args.session, audit, blobs, threshold, preview)
+        print(f"compacted session {args.session}: {n} event(s) rewritten.")
+    else:
+        done = store.compact_all(audit, blobs, threshold, preview)
+        print(f"compacted {len(done)} session(s): {', '.join(done) or '(none)'} "
+              f"(skipped the active session).")
+    removed = store.prune_blobs(blobs,
+                                older_than_days=args.prune_blobs_older_than,
+                                max_bytes=args.max_blob_bytes)
+    if removed:
+        print(f"pruned {removed} blob(s).")
+    return 0
+
+
+def _cmd_show(args) -> int:
+    try:
+        data = store.get_blob(args.blob, args.blob_dir)
+    except FileNotFoundError:
+        print(f"blob {args.blob} not found in {args.blob_dir}")
+        return 1
+    sys.stdout.write(data.decode("utf-8", errors="replace"))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="pd", description="Police department for Claude Code subagents")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -145,6 +189,26 @@ def build_parser() -> argparse.ArgumentParser:
     j.add_argument("--projects-dir", default=DEFAULT_PROJECTS_DIR)
     j.add_argument("--audit-dir", default=DEFAULT_AUDIT_DIR)
     j.set_defaults(func=_cmd_judge)
+
+    c = sub.add_parser("compact", help="compress old sessions + externalize bulky payloads")
+    c.add_argument("--session", default=None, help="compact one session (default: all but active)")
+    c.add_argument("--threshold", type=int, default=None,
+                   help="byte size above which a string is externalized (default: config)")
+    c.add_argument("--prune-blobs-older-than", type=int, default=None,
+                   help="delete blobs older than N days")
+    c.add_argument("--max-blob-bytes", type=int, default=None,
+                   help="cap total blob bytes (oldest evicted first)")
+    c.add_argument("--dry-run", action="store_true", help="report only; write nothing")
+    c.add_argument("--rules", default=None)
+    c.add_argument("--audit-dir", default=DEFAULT_AUDIT_DIR)
+    c.add_argument("--blob-dir", default=DEFAULT_BLOB_DIR)
+    c.set_defaults(func=_cmd_compact)
+
+    s = sub.add_parser("show", help="print the full content of a stored blob (autopsy)")
+    s.add_argument("--blob", required=True, help="sha256 of the blob (the _pd_blob value)")
+    s.add_argument("--blob-dir", default=DEFAULT_BLOB_DIR)
+    s.set_defaults(func=_cmd_show)
+
     return p
 
 
