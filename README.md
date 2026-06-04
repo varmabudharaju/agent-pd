@@ -21,6 +21,10 @@ pd report --session <id> --format md
 pd report --verbose            # full evidence + files-touched per agent
 pd report --agent <id|main>    # focus one agent: digest + every action it took
 pd watch                 # live "police scanner" feed of agent activity + crimes
+pd verify [--session ID] [--all]
+                         # check the audit-log hash-chain — detects tampering/truncation
+                         # (✓ intact / ✗ TAMPER DETECTED or TRUNCATED, rc 2). Set
+                         # PD_AUDIT_KEY for HMAC-keyed integrity an off-key attacker can't forge.
 pd compact [--session ID] [--prune-older-than DAYS] [--dry-run]
                          # gzip old session logs (<sid>.jsonl → <sid>.jsonl.gz), skipping the
                          # most-recently-modified (active) session. Lossless: every field stays

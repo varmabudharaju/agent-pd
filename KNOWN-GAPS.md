@@ -150,14 +150,23 @@ not a sandbox, and a determined adversary using obfuscation or indirection can e
 - **`off_task` remains heuristic** (word-overlap) — use `pd judge` for trustworthy verdicts.
   `~/.config` sensitivity is broad and can be noisy.
 
-## 📨 Deferred (architectural)
+## ✅ Shipped on `feat/audit-integrity` (partial)
 
-- **No cryptographic integrity on the audit log.** An agent with `Bash` can still delete or
-  forge `~/.claude/pd/audit/*.jsonl`. Accessing the audit directory is now flagged
-  sensitive-critical (we *detect* the attempt), but pd does **not prevent** tampering and
-  has no tamper-evident log (HMAC, hash-chain, append-only WORM, or off-host shipping).
-  This is the most significant remaining architectural gap for a security product, and is
-  documented here as future work — not something the hardening pass closed.
+- **Audit-log integrity — hash-chain tamper-evidence.** Every audit event now carries a
+  `seq` (monotonic per session) and `chain = sha256(prev_chain + canonical(event))`, or
+  **HMAC-SHA256** when `PD_AUDIT_KEY` is set. The hook computes it under a per-session file
+  lock (safe under parallel subagents) with a `<sid>.head.json` anchor, and stays crash-safe
+  (always exit 0; never loses an event; head-write failure is benign). New command
+  **`pd verify [--session ID] [--all]`** recomputes the chain and reports `✓ chain intact`
+  (rc 0), `✗ TAMPER DETECTED` / `✗ TRUNCATED` (rc 2), or `⚠ no integrity data` for legacy
+  sessions (rc 0). Catches in-place edits, reordering, mid-deletion, tail truncation,
+  inserted unchained lines, and (with HMAC) edits by someone without the key. Verifies across
+  `pd compact` (canonical form is round-trip stable over the gzipped log).
+- **Residual — still not tamper-*proof*.** It is tamper-**evident**, not tamper-**proof**. A
+  same-user agent with Bash can read the log, the head file, and (usually) `PD_AUDIT_KEY`, so
+  a determined attacker can re-chain the whole log after tampering and pass `pd verify`. The
+  remaining work for true tamper-proofing is shipping events to an **off-host append-only
+  sink** the audited agent can't reach. (See SECURITY.md "Audit-log integrity".)
 
 ## 📋 Backlog / v2
 

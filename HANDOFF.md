@@ -6,7 +6,12 @@ tool/permission event; a CLI audits those logs and reports rule offenses with ev
 
 - **Repo:** https://github.com/varmabudharaju/agent-pd (branch `master`)
 - **Local:** `/Users/varma/agent-pd` · Python 3.11 (use `python3`) · CLI: `pd`
-- **State at handoff:** 347 tests passing, working tree clean, all pushed.
+- **State at handoff:** 392 tests passing, working tree clean, all pushed.
+- **Audit-log integrity landed** (`feat/audit-integrity`): events are hash-chained
+  (`seq` + `chain = sha256(prev_chain + canonical(event))`, HMAC-SHA256 if `PD_AUDIT_KEY`
+  is set), computed by the hook under a per-session file lock with a `<sid>.head.json`
+  anchor; new `pd verify` recomputes the chain and reports tamper/truncation (rc 2). It is
+  tamper-**evident**, not tamper-**proof** (a same-user agent can re-chain) — see SECURITY.md.
 - **Security-hardening pass landed** (`fix/security-hardening`): faithful permission
   matching (operator-split, word-boundary, gitignore globs, redirect/command-sub
   isolation, conservative bias), sensitive-path immunity (never downgraded by allow-rules),
@@ -89,6 +94,10 @@ pd watch --crimes-only               # quiet unless something's wrong
 pd watch --verbose                   # full commands + reasons, no truncation
 pd watch --session <id> --no-color --no-emoji
 
+pd verify                            # check the audit-log hash-chain (most recent session)
+pd verify --all                      # verify every session; rc 2 on any tamper/truncation
+                                     # set PD_AUDIT_KEY for HMAC-keyed integrity
+
 pd report                            # offense report, most recent session
 pd report --session <id> --format md # md | json | both
 pd report --verbose                  # full evidence + files-touched per agent
@@ -110,6 +119,9 @@ pd compact [--session ID] [--prune-older-than DAYS] [--dry-run]
 ```
 agent_pd/
   hook.py           # patrol hook: stdin event -> audit log, always exit 0, crash-safe
+  integrity.py      # audit-log hash-chain core: seq + chain (sha256 / HMAC via PD_AUDIT_KEY),
+                    #   canonical(event), verify_events, per-session file lock + <sid>.head.json
+                    #   read/write helpers (anchor for tamper/truncation detection)
   investigator.py   # gather(): correlate audit + transcripts + meta.json by agent_id
   detectors/
     __init__.py     # DETECTORS registry + run_detectors()
@@ -123,8 +135,8 @@ agent_pd/
   models.py         # Action, AgentRecord, Offense dataclasses
   install_hook.py   # idempotent settings.json hook registration
   store.py          # gzip-only audit compaction + transparent .jsonl/.jsonl.gz reading (iter_events, compact_session/compact_all/compact_targets, prune_sessions)
-  cli.py            # argparse: report/list/install-hook/watch/judge/compact
-tests/              # 347 tests, pure (no API key needed — judge uses injected fake clients)
+  cli.py            # argparse: report/list/install-hook/watch/judge/compact/verify
+tests/              # 392 tests, pure (no API key needed — judge uses injected fake clients)
 pd-rules.yaml       # user-editable rules
 docs/superpowers/   # specs + the original implementation plan
 ```
@@ -135,7 +147,7 @@ docs/superpowers/   # specs + the original implementation plan
 cd ~/agent-pd
 pip install --user -e .          # core (zero runtime deps but PyYAML)
 pip install --user -e ".[judge]" # + anthropic SDK (only for the API judge backend)
-python3 -m pytest -q             # 347 tests
+python3 -m pytest -q             # 392 tests
 ```
 
 TDD throughout; detectors/render/live/judge are all unit-tested with no network.
