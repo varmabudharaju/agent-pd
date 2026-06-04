@@ -284,6 +284,20 @@ def test_prune_blobs_max_bytes_enforces_cap_across_many(tmp_path):
     assert (store.blob_path(shas[-1], tmp_path)).exists()   # newest always kept
 
 
+def test_compact_targets_matches_compact_all(tmp_path):
+    audit = tmp_path / "audit"; audit.mkdir()
+    blobs = tmp_path / "blobs"
+    _write_jsonl(audit / "old.jsonl", [{"tool_name": "Read", "tool_input": {}}])
+    _write_jsonl(audit / "mid.jsonl", [{"tool_name": "Read", "tool_input": {}}])
+    _write_jsonl(audit / "active.jsonl", [{"tool_name": "Read", "tool_input": {}}])
+    os.utime(audit / "old.jsonl", (time.time() - 200,) * 2)
+    os.utime(audit / "mid.jsonl", (time.time() - 100,) * 2)
+    targets = store.compact_targets(audit)
+    assert targets == ["mid", "old"]          # sorted, active excluded
+    done = store.compact_all(audit, blobs, threshold=2048)
+    assert done == targets                      # the two agree exactly
+
+
 def test_report_identical_raw_vs_compacted(tmp_path):
     from agent_pd.investigator import gather
     from agent_pd.detectors import run_detectors
