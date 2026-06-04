@@ -4,6 +4,7 @@ Split into a pure-logic `LiveMonitor` (state + detector reuse, no styling), a
 file-following `tail_events` iterator, and a thin `watch` orchestrator that renders via
 `agent_pd.render`. Detectors are reused unchanged by accumulating a per-agent
 AgentRecord and emitting each offense once."""
+import gzip
 import json
 import time
 from collections import Counter
@@ -131,7 +132,8 @@ def tail_events(audit_dir, session_id=None, poll_interval=0.5, _max_polls=None):
         if path is None or not Path(path).exists():
             path = _resolve_session_file(audit_dir, session_id)
         else:
-            with open(path, "r", encoding="utf-8") as f:
+            opener = gzip.open if str(path).endswith(".gz") else open
+            with opener(path, "rt", encoding="utf-8") as f:
                 f.seek(offset)
                 buf += f.read()
                 offset = f.tell()
