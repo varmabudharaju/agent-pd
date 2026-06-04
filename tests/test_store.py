@@ -85,3 +85,49 @@ def test_get_blob_is_gzip_on_disk(tmp_path):
     sha = store.put_blob(raw, tmp_path)
     with gzip.open(store.blob_path(sha, tmp_path), "rb") as f:
         assert f.read() == raw
+
+
+def _write_jsonl(path, events):
+    path.write_text("\n".join(json.dumps(e) for e in events) + "\n")
+
+
+def _write_jsonl_gz(path, events):
+    with gzip.open(path, "wt", encoding="utf-8") as f:
+        f.write("\n".join(json.dumps(e) for e in events) + "\n")
+
+
+def test_iter_events_reads_plain(tmp_path):
+    _write_jsonl(tmp_path / "s1.jsonl", [{"i": 1}, {"i": 2}])
+    assert list(store.iter_events("s1", tmp_path)) == [{"i": 1}, {"i": 2}]
+
+
+def test_iter_events_reads_gz(tmp_path):
+    _write_jsonl_gz(tmp_path / "s1.jsonl.gz", [{"i": 1}, {"i": 2}])
+    assert list(store.iter_events("s1", tmp_path)) == [{"i": 1}, {"i": 2}]
+
+
+def test_iter_events_merges_gz_then_plain_on_race(tmp_path):
+    _write_jsonl_gz(tmp_path / "s1.jsonl.gz", [{"i": 1}])
+    _write_jsonl(tmp_path / "s1.jsonl", [{"i": 2}])
+    assert list(store.iter_events("s1", tmp_path)) == [{"i": 1}, {"i": 2}]
+
+
+def test_iter_events_tolerates_blank_and_bad_lines(tmp_path):
+    (tmp_path / "s1.jsonl").write_text('{"i": 1}\n\nnot json\n{"i": 2}\n')
+    assert list(store.iter_events("s1", tmp_path)) == [{"i": 1}, {"i": 2}]
+
+
+def test_latest_session_considers_both_extensions(tmp_path):
+    _write_jsonl(tmp_path / "old.jsonl", [{"i": 1}])
+    _write_jsonl_gz(tmp_path / "new.jsonl.gz", [{"i": 2}])
+    import os, time
+    old = time.time() - 100
+    os.utime(tmp_path / "old.jsonl", (old, old))
+    assert store.latest_session(tmp_path) == "new"
+
+
+def test_list_sessions_dedups_both_extensions(tmp_path):
+    _write_jsonl(tmp_path / "a.jsonl", [{"i": 1}])
+    _write_jsonl_gz(tmp_path / "b.jsonl.gz", [{"i": 2}])
+    (tmp_path / "a.jsonl.gz").write_bytes(gzip.compress(b'{"i": 3}\n'))
+    assert store.list_sessions(tmp_path) == ["a", "b"]

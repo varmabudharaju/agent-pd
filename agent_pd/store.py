@@ -73,3 +73,49 @@ def get_blob(sha, blob_dir):
     Raises FileNotFoundError if the sha is not in the store."""
     with gzip.open(blob_path(sha, blob_dir), "rb") as f:
         return f.read()
+
+
+def _parse_lines(text):
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            yield json.loads(line)
+        except json.JSONDecodeError:
+            continue
+
+
+def iter_events(session_id, audit_dir):
+    """Yield parsed events for a session, reading <sid>.jsonl.gz if present, else
+    <sid>.jsonl. If BOTH exist (compaction/append race), yield gz events first then the
+    plain-text lines. Blank/partial lines are skipped."""
+    audit_dir = Path(audit_dir)
+    gz = audit_dir / f"{session_id}.jsonl.gz"
+    plain = audit_dir / f"{session_id}.jsonl"
+    if gz.exists():
+        with gzip.open(gz, "rt", encoding="utf-8") as f:
+            yield from _parse_lines(f.read())
+    if plain.exists():
+        yield from _parse_lines(plain.read_text(encoding="utf-8"))
+
+
+def _session_files(audit_dir):
+    audit_dir = Path(audit_dir)
+    if not audit_dir.exists():
+        return []
+    out = []
+    for p in audit_dir.glob("*.jsonl"):
+        out.append((p.stat().st_mtime, p.stem))
+    for p in audit_dir.glob("*.jsonl.gz"):
+        out.append((p.stat().st_mtime, p.name[: -len(".jsonl.gz")]))
+    return out
+
+
+def latest_session(audit_dir):
+    files = _session_files(audit_dir)
+    return max(files)[1] if files else None
+
+
+def list_sessions(audit_dir):
+    return sorted({sid for _, sid in _session_files(audit_dir)})
