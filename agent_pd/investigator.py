@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+from . import store
+
 DEFAULT_PROJECTS_DIR = Path.home() / ".claude" / "projects"
 DEFAULT_AUDIT_DIR = Path.home() / ".claude" / "pd" / "audit"
 
@@ -19,16 +21,8 @@ def find_subagents_dir(projects_dir: Path, session_id: str):
 
 
 def _latest_session(projects_dir: Path, audit_dir: Path):
-    # Audit files are the only source gather() can read, so candidates must be
-    # audit files only — picking a session by a subagents-dir mtime could select
-    # a session with no audit file -> silently empty report. (projects_dir kept
-    # for the caller's signature; unused here.)
-    if not Path(audit_dir).exists():
-        return None
-    candidates = [(p.stat().st_mtime, p.stem) for p in Path(audit_dir).glob("*.jsonl")]
-    if not candidates:
-        return None
-    return max(candidates)[1]
+    # projects_dir kept for the caller's signature; audit files are the only source.
+    return store.latest_session(audit_dir)
 
 
 def gather(session_id=None, projects_dir=DEFAULT_PROJECTS_DIR, audit_dir=DEFAULT_AUDIT_DIR):
@@ -39,18 +33,12 @@ def gather(session_id=None, projects_dir=DEFAULT_PROJECTS_DIR, audit_dir=DEFAULT
         session_id = _latest_session(projects_dir, audit_dir)
         if session_id is None:
             return []
-    audit_file = Path(audit_dir) / f"{session_id}.jsonl"
-    if not audit_file.exists():
+    events = list(store.iter_events(session_id, audit_dir))
+    if not events:
         return []
     mon = LiveMonitor(projects_dir=projects_dir, audit_dir=audit_dir)
     rules = load_rules(None)               # detectors re-run in the CLI with real rules
-    for line in audit_file.read_text(encoding="utf-8").splitlines():
-        if not line.strip():
-            continue
-        try:
-            ev = json.loads(line)
-        except json.JSONDecodeError:
-            continue
+    for ev in events:
         mon.process(ev, rules)
     records = list(mon.records.values())
     for r in records:                      # label the main agent (empty agent_id)
