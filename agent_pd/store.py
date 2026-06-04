@@ -8,6 +8,8 @@ Bulk blob store:                   blobs/<ab>/<sha256>.gz   (gzip, content-addre
 import gzip
 import hashlib
 import json
+import os
+import time
 from pathlib import Path
 
 BLOB_KEY = "_pd_blob"
@@ -46,3 +48,26 @@ def shrink_value(obj, threshold=DEFAULT_THRESHOLD, preview_chars=DEFAULT_PREVIEW
 def blob_path(sha, blob_dir):
     """Filesystem path for a content-addressed blob (sha is a 64-char sha256 hex)."""
     return Path(blob_dir) / sha[:2] / f"{sha}.gz"
+
+
+def put_blob(raw_bytes, blob_dir):
+    """Write `raw_bytes` gzip'd at a content-addressed path. No-op if it already exists
+    (dedup); refreshes mtime so actively-referenced blobs survive age-based pruning.
+    Returns the sha256 hex."""
+    sha = hashlib.sha256(raw_bytes).hexdigest()
+    path = blob_path(sha, blob_dir)
+    if path.exists():
+        now = time.time()
+        os.utime(path, (now, now))
+        return sha
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".gz.tmp")
+    with gzip.open(tmp, "wb") as f:
+        f.write(raw_bytes)
+    tmp.replace(path)
+    return sha
+
+
+def get_blob(sha, blob_dir):
+    with gzip.open(blob_path(sha, blob_dir), "rb") as f:
+        return f.read()

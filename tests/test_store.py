@@ -56,3 +56,30 @@ def test_shrink_value_idempotent_even_when_preview_exceeds_threshold():
     new, blobs = store.shrink_value(ref, threshold=10, preview_chars=500)
     assert new == ref          # unchanged
     assert blobs == []         # nothing externalized
+
+
+def test_put_blob_roundtrip(tmp_path):
+    raw = b"hello world" * 100
+    sha = store.put_blob(raw, tmp_path)
+    assert sha == hashlib.sha256(raw).hexdigest()
+    assert store.blob_path(sha, tmp_path).exists()
+    assert store.get_blob(sha, tmp_path) == raw
+
+
+def test_put_blob_dedups(tmp_path):
+    raw = b"same content"
+    sha1 = store.put_blob(raw, tmp_path)
+    mtime1 = store.blob_path(sha1, tmp_path).stat().st_mtime_ns
+    sha2 = store.put_blob(raw, tmp_path)
+    assert sha1 == sha2
+    # only one file exists for this content
+    assert len(list(store.blob_path(sha1, tmp_path).parent.glob("*.gz"))) == 1
+    # mtime refreshed (>=) so an actively re-referenced blob survives age pruning
+    assert store.blob_path(sha1, tmp_path).stat().st_mtime_ns >= mtime1
+
+
+def test_get_blob_is_gzip_on_disk(tmp_path):
+    raw = b"payload"
+    sha = store.put_blob(raw, tmp_path)
+    with gzip.open(store.blob_path(sha, tmp_path), "rb") as f:
+        assert f.read() == raw
