@@ -74,3 +74,22 @@ def test_storage_override(tmp_path):
     p.write_text("storage:\n  retention_days: 30\n")
     rules = load_rules(p)
     assert rules.storage["retention_days"] == 30
+
+
+def test_sink_defaults():
+    r = load_rules(None)
+    assert r.sink["type"] is None
+    assert r.sink["url"] is None
+    assert r.sink["path"] is None
+    assert r.sink["timeout"] == 10
+
+
+def test_sink_override(tmp_path):
+    p = tmp_path / "rules.yaml"
+    p.write_text("sink:\n  type: file\n  path: /x\n")
+    r = load_rules(p)
+    assert r.sink["type"] == "file"
+    assert r.sink["path"] == "/x"
+    # unspecified keys keep defaults
+    assert r.sink["timeout"] == 10
+    assert r.sink["url"] is None

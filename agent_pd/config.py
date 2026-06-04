@@ -135,6 +135,12 @@ DEFAULTS = {
     "storage": {
         "retention_days": None,
     },
+    "sink": {
+        "type": None,      # None disabled; "file" | "http"
+        "url": None,       # http
+        "path": None,      # file
+        "timeout": 10,
+    },
 }
 
 
@@ -149,6 +155,7 @@ class Rules:
     detectors: dict
     off_task_overlap_threshold: float
     storage: dict
+    sink: dict
 
 
 def _deep_merge(base: dict, override: dict) -> dict:
@@ -176,4 +183,5 @@ def load_rules(path=None) -> Rules:
         detectors=data["detectors"],
         off_task_overlap_threshold=data["off_task_overlap_threshold"],
         storage=data["storage"],
+        sink=data["sink"],
     )
