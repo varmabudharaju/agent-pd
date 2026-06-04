@@ -91,6 +91,20 @@ def test_unpermitted_bash_stays_high():
     assert out_of_scope.detect(rec, rules)[0].severity == "high"
 
 
+def test_redirect_to_sensitive_stays_critical_not_info():
+    # `Bash(git:*)` authorizes RUNNING git, not WRITING the redirect target.
+    # The ssh write must remain CRITICAL, not be downgraded to info.
+    rules = load_rules(None)
+    rec = AgentRecord(agent_id="a1", agent_type="Explore", brief="b", cwd="/proj",
+                      actions=[Action(agent_id="a1", tool_name="Bash",
+                                      tool_input={"command": "git status > ~/.ssh/authorized_keys"})],
+                      allow_rules=["Bash(git:*)"])
+    offs = out_of_scope.detect(rec, rules)
+    assert len(offs) == 1
+    assert offs[0].severity == "critical"
+    assert "permitted" not in offs[0].evidence
+
+
 def test_detector_can_be_disabled_via_boundary_and_empty_allowlist():
     rules = replace(load_rules(None), project_boundary=False, scope_dirs=[], sensitive_patterns=[])
     rec = _rec([Action(agent_id="a1", tool_name="Write",
