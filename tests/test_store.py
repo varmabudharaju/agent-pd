@@ -48,3 +48,11 @@ def test_shrink_value_measures_bytes_not_chars():
     new, blobs = store.shrink_value({"content": s}, threshold=2048)
     assert new["content"]["bytes"] == len(s.encode("utf-8"))
     assert blobs and blobs[0][1] == s.encode("utf-8")
+
+
+def test_shrink_value_idempotent_even_when_preview_exceeds_threshold():
+    # A blob-ref whose preview is longer than the threshold must NOT be re-externalized.
+    ref = {"content": {"_pd_blob": "deadbeef", "bytes": 9999, "preview": "P" * 100}}
+    new, blobs = store.shrink_value(ref, threshold=10, preview_chars=500)
+    assert new == ref          # unchanged
+    assert blobs == []         # nothing externalized
