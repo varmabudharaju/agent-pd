@@ -52,8 +52,11 @@ def detect(record, rules) -> list:
             else:
                 ev = f"{tool_label} touched {raw} (outside scope {detail})"
                 sev = high
-            if is_permitted(tool_label, a.tool_input, abspath, allow,
-                            cwd=cwd, project_root=root):
+            # Authorization can excuse a project-boundary or scope offense, but never a
+            # sensitive-path one: a SENSITIVE hit stays critical no matter how broad the
+            # allow-rule (a watchdog must not be silenced about ~/.ssh, .env, *.pem, ...).
+            if kind != "sensitive" and is_permitted(tool_label, a.tool_input, abspath, allow,
+                                                    cwd=cwd, project_root=root):
                 sev = info
                 ev += " (permitted by allow-rule)"
             out.append(Offense(record.agent_id, record.agent_type, OFFENSE, sev, "high", ev))

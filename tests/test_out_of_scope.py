@@ -105,6 +105,51 @@ def test_redirect_to_sensitive_stays_critical_not_info():
     assert "permitted" not in offs[0].evidence
 
 
+def test_sensitive_not_downgraded_by_bare_read_rule():
+    # A bare `Read` rule matches everything via is_permitted, but a SENSITIVE
+    # path must NEVER be downgraded to info -- it stays critical.
+    import os
+    rules = load_rules(None)
+    rec = AgentRecord(agent_id="a1", agent_type="Explore", brief="b", cwd="/proj",
+                      actions=[Action(agent_id="a1", tool_name="Read",
+                                      tool_input={"file_path": os.path.expanduser("~/.ssh/id_rsa")})],
+                      allow_rules=["Read"])
+    offs = out_of_scope.detect(rec, rules)
+    assert len(offs) == 1
+    assert offs[0].severity == "critical"
+    assert "permitted" not in offs[0].evidence
+
+
+def test_sensitive_not_downgraded_by_broad_write_glob():
+    import os
+    rules = load_rules(None)
+    rec = AgentRecord(agent_id="a1", agent_type="Explore", brief="b", cwd="/proj",
+                      actions=[Action(agent_id="a1", tool_name="Write",
+                                      tool_input={"file_path": os.path.expanduser("~/.ssh/authorized_keys")})],
+                      allow_rules=["Write(~/**)"])
+    offs = out_of_scope.detect(rec, rules)
+    assert len(offs) == 1
+    assert offs[0].severity == "critical"
+    assert "permitted" not in offs[0].evidence
+
+
+def test_nonsensitive_boundary_still_downgraded_by_matching_rule():
+    # REGRESSION: a NON-sensitive boundary hit with a matching allow-rule must
+    # still be downgraded to info.
+    import os
+    rules = load_rules(None)
+    target = os.path.expanduser("~/projects/other/file.py")
+    rec = AgentRecord(agent_id="a1", agent_type="Explore", brief="b", cwd="/proj",
+                      actions=[Action(agent_id="a1", tool_name="Read",
+                                      tool_input={"file_path": target})],
+                      allow_rules=["Read(~/projects/**)"])
+    offs = out_of_scope.detect(rec, rules)
+    assert len(offs) == 1
+    assert "outside project" in offs[0].evidence  # confirm boundary, not sensitive
+    assert offs[0].severity == "info"
+    assert "permitted by allow-rule" in offs[0].evidence
+
+
 def test_detector_can_be_disabled_via_boundary_and_empty_allowlist():
     rules = replace(load_rules(None), project_boundary=False, scope_dirs=[], sensitive_patterns=[])
     rec = _rec([Action(agent_id="a1", tool_name="Write",
