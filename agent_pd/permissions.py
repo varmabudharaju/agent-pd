@@ -12,9 +12,23 @@ from pathlib import Path
 _SETTINGS_FILES = ("settings.json", "settings.local.json")
 
 # Split a compound Bash command into independently-authorized sub-commands.
-# Splits on || && | ; & and newlines. A Bash rule authorizes a command only if
-# EVERY resulting segment matches an allow-rule.
-_BASH_SPLIT_RE = re.compile(r"\|\||&&|[;|&\n]")
+# Splits on shell control operators (|| && | ; & newline) AND on redirect operators
+# (>> 2> &> >& > <). A Bash rule authorizes a command only if EVERY resulting
+# segment matches an allow-rule. A command-prefix rule (e.g. Bash(git:*)) authorizes
+# RUNNING the command, not WRITING to a redirect target -- so the redirect target
+# becomes its own segment (a bare path) that no Bash(cmd:*) spec can match, and the
+# whole command is correctly NOT permitted.
+#
+# CONSERVATIVE-BIAS NOTE: this regex does not understand shell quoting, so a `>` or
+# `<` inside quotes (e.g. echo "a > b") is mis-split into extra segments. That can
+# only make a command LESS likely to be deemed permitted (the offense stays flagged),
+# which is the SAFE direction. We accept this rather than fully parse shell quoting.
+# Order matters: multi-char redirects (>> 2> &> >&) are listed before bare >.
+_BASH_SPLIT_RE = re.compile(r"\|\||&&|>>|2>|&>|>&|[;|&<>\n]")
+
+# Command substitution: $( ... ) and `...`. Contents are themselves commands that
+# must independently match an allow-rule, so we extract them as additional segments.
+_BACKTICK_RE = re.compile(r"`([^`]*)`")
 
 # Leading process wrappers Claude Code strips before matching. (token, takes_arg)
 # `nice` may carry an optional `-n N`; handled specially below.
@@ -108,19 +122,71 @@ def _segment_matches(segment: str, spec: str) -> bool:
     return bool(_spec_to_segment_regex(spec).fullmatch(segment))
 
 
+def _extract_substitutions(cmd: str):
+    """Pull command-substitution bodies out of `cmd`, returning (host, extracted) where
+    `host` is the surrounding command with each $(...)/`...` replaced by a space and
+    `extracted` is the list of substitution bodies (themselves commands to authorize).
+    Handles $(...) nesting (best-effort, brace-counting) and backticks. Each extracted
+    body is recursively scanned so nested substitutions also become segments."""
+    extracted = []
+    # $( ... ) with nesting via a hand-rolled scan (regex can't balance parens).
+    out = []
+    i, n = 0, len(cmd)
+    while i < n:
+        if cmd[i] == "$" and i + 1 < n and cmd[i + 1] == "(":
+            depth = 1
+            j = i + 2
+            while j < n and depth:
+                if cmd[j] == "(":
+                    depth += 1
+                elif cmd[j] == ")":
+                    depth -= 1
+                if depth:
+                    j += 1
+            body = cmd[i + 2:j]            # contents between $( and the matching )
+            extracted.append(body)
+            out.append(" ")
+            i = j + 1                       # skip past the closing )
+        else:
+            out.append(cmd[i])
+            i += 1
+    host = "".join(out)
+    # Backticks (no nesting in POSIX): pull each body, blank it out in the host.
+    extracted += _BACKTICK_RE.findall(host)
+    host = _BACKTICK_RE.sub(" ", host)
+    # Recurse into extracted bodies for further nested substitutions.
+    deeper = []
+    for body in extracted:
+        h, more = _extract_substitutions(body)
+        deeper.append(h)
+        deeper += more
+    return host, deeper
+
+
+def _strip_comment(segment: str) -> str:
+    """Drop an unquoted `#` and everything after it (a shell comment never executes).
+    CONSERVATIVE-BIAS NOTE: we don't track quoting, so a `#` inside quotes is also
+    treated as a comment start -- that only shortens the segment and can make it LESS
+    likely to match, i.e. the SAFE direction."""
+    return segment.split("#", 1)[0]
+
+
 def _bash_match(cmd: str, spec: str) -> bool:
-    """A Bash rule authorizes a command only if EVERY sub-command (split on shell
-    operators) independently matches the spec. Conservative: any unmatched segment
-    means the whole command is not permitted by this rule."""
+    """A Bash rule authorizes a command only if EVERY sub-command independently matches
+    the spec. Sub-commands come from: control/redirect-operator splitting, AND the
+    bodies of command substitutions ($(...) / `...`). Conservative: any unmatched
+    segment means the whole command is not permitted by this rule."""
     cmd = cmd.strip()
-    segments = _BASH_SPLIT_RE.split(cmd)
+    host, substitutions = _extract_substitutions(cmd)
     matched_any = False
-    for seg in segments:
-        if not seg.strip():
-            continue
-        matched_any = True
-        if not _segment_matches(seg, spec):
-            return False
+    for chunk in [host, *substitutions]:
+        for seg in _BASH_SPLIT_RE.split(chunk):
+            seg = _strip_comment(seg)
+            if not seg.strip():
+                continue
+            matched_any = True
+            if not _segment_matches(seg, spec):
+                return False
     return matched_any
 
 

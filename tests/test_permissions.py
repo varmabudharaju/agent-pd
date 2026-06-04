@@ -176,6 +176,57 @@ def test_is_permitted_bare_name_threads_cwd():
                                     cwd="/cwd", project_root="/root")
 
 
+# --- Command substitution: embedded commands must independently match ---
+
+def test_bash_command_substitution_dollar_paren_not_permitted():
+    assert not _bash_perm("git status $(cat ~/.ssh/id_rsa)", ["Bash(git:*)"])
+
+
+def test_bash_command_substitution_backtick_not_permitted():
+    assert not _bash_perm("git status `cat ~/.ssh/id_rsa`", ["Bash(git:*)"])
+
+
+def test_bash_command_substitution_nested_not_permitted():
+    assert not _bash_perm("git status $(echo $(cat ~/.ssh/id_rsa))", ["Bash(git:*)"])
+
+
+def test_bash_command_substitution_embedded_matches_still_permitted():
+    # both host and embedded commands match git -> still permitted
+    assert _bash_perm("git log $(git rev-parse HEAD)", ["Bash(git:*)"])
+
+
+# --- Redirects: a command-prefix rule does not authorize the redirect target ---
+
+def test_bash_redirect_overwrite_not_permitted():
+    assert not _bash_perm("git status > ~/.ssh/authorized_keys", ["Bash(git:*)"])
+
+
+def test_bash_redirect_append_not_permitted():
+    assert not _bash_perm("git status >> ~/.ssh/authorized_keys", ["Bash(git:*)"])
+
+
+def test_bash_redirect_stderr_not_permitted():
+    assert not _bash_perm("git status 2> ~/.bashrc", ["Bash(git:*)"])
+
+
+def test_bash_redirect_all_not_permitted():
+    assert not _bash_perm("git status &> ~/.bashrc", ["Bash(git:*)"])
+
+
+def test_bash_redirect_dup_not_permitted():
+    assert not _bash_perm("git status >& ~/.bashrc", ["Bash(git:*)"])
+
+
+def test_bash_redirect_input_not_permitted():
+    assert not _bash_perm("git status < ~/.ssh/id_rsa", ["Bash(git:*)"])
+
+
+# --- Inline comments: text after an unquoted # is stripped before matching ---
+
+def test_bash_inline_comment_stripped_permitted():
+    assert _bash_perm("git status # rm -rf ~", ["Bash(git:*)"])
+
+
 # --- CONSERVATIVE INVARIANT: unmatched destructive command is NOT permitted ---
 
 def test_conservative_unmatched_command_not_permitted():
