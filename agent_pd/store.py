@@ -168,3 +168,37 @@ def compact_all(audit_dir, blob_dir, threshold=DEFAULT_THRESHOLD,
             compact_session(sid, audit_dir, blob_dir, threshold, preview_chars)
             done.append(sid)
     return done
+
+
+def _all_blobs(blob_dir):
+    blob_dir = Path(blob_dir)
+    if not blob_dir.exists():
+        return []
+    return sorted(blob_dir.glob("*/*.gz"), key=lambda p: p.stat().st_mtime)
+
+
+def prune_blobs(blob_dir, older_than_days=None, max_bytes=None):
+    """Delete blobs by age, then enforce a total-size cap (oldest mtime first).
+    Returns the count removed. No-op when both limits are None."""
+    removed = 0
+    blobs = _all_blobs(blob_dir)
+    if older_than_days is not None:
+        cutoff = time.time() - older_than_days * 86400
+        survivors = []
+        for p in blobs:
+            if p.stat().st_mtime < cutoff:
+                p.unlink()
+                removed += 1
+            else:
+                survivors.append(p)
+        blobs = survivors
+    if max_bytes is not None:
+        total = sum(p.stat().st_size for p in blobs)
+        for p in blobs:                       # oldest first (list is mtime-sorted)
+            sz = p.stat().st_size
+            if total - sz <= max_bytes:
+                break
+            total -= sz
+            p.unlink()
+            removed += 1
+    return removed

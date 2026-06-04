@@ -233,3 +233,33 @@ def test_compact_all_skips_already_compacted_active(tmp_path):
     # active (gz, most recent) is skipped; old plain gets compacted; gz-only never re-compacted
     assert done == ["old"]
     assert (audit / "old.jsonl.gz").exists()
+
+
+def test_prune_blobs_by_age(tmp_path):
+    sha_old = store.put_blob(b"old-content", tmp_path)
+    sha_new = store.put_blob(b"new-content", tmp_path)
+    import os, time
+    old = time.time() - 40 * 86400
+    os.utime(store.blob_path(sha_old, tmp_path), (old, old))
+    removed = store.prune_blobs(tmp_path, older_than_days=30)
+    assert removed == 1
+    assert not store.blob_path(sha_old, tmp_path).exists()
+    assert store.blob_path(sha_new, tmp_path).exists()
+
+
+def test_prune_blobs_by_max_bytes_removes_oldest_first(tmp_path):
+    sha_old = store.put_blob(b"X" * 1000, tmp_path)
+    sha_new = store.put_blob(b"Y" * 1000, tmp_path)
+    import os, time
+    old = time.time() - 100
+    os.utime(store.blob_path(sha_old, tmp_path), (old, old))
+    # cap below the on-disk total -> oldest gets evicted
+    store.prune_blobs(tmp_path, max_bytes=1)
+    assert not store.blob_path(sha_old, tmp_path).exists()
+    assert store.blob_path(sha_new, tmp_path).exists()
+
+
+def test_prune_blobs_noop_when_no_limits(tmp_path):
+    sha = store.put_blob(b"keep", tmp_path)
+    assert store.prune_blobs(tmp_path) == 0
+    assert store.blob_path(sha, tmp_path).exists()
