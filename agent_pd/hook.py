@@ -18,6 +18,26 @@ def _first(payload, *keys, default=None):
     return default
 
 
+# Every source-payload key build_event reads (snake + camel variants). Any key NOT in
+# here is preserved verbatim under event["_extra"] so the watchdog never goes blind to
+# new/unknown CC fields.
+_CONSUMED_KEYS = {
+    "timestamp", "ts",
+    "hook_event_name", "event",
+    "session_id", "sessionId",
+    "agent_id", "agentId",
+    "agent_type", "agentType",
+    "tool_name", "toolName",
+    "tool_input", "toolInput",
+    "permissionDecision", "decision", "permission_decision",
+    "denial_reason", "reason", "permissionDecisionReason",
+    "cwd",
+    "tool_result", "toolResult",
+    "permission_mode", "permissionMode",
+    "transcript_path", "transcriptPath",
+}
+
+
 def build_event(payload: dict) -> dict:
     event = {
         "ts": _first(payload, "timestamp", "ts"),
@@ -29,13 +49,25 @@ def build_event(payload: dict) -> dict:
         "tool_input": _first(payload, "tool_input", "toolInput", default={}),
         "decision": _first(payload, "permissionDecision", "decision",
                            "permission_decision"),
-        "reason": _first(payload, "reason", "permissionDecisionReason"),
+        # denial_reason is the authoritative CC field for PermissionDenied; read it first.
+        "reason": _first(payload, "denial_reason", "reason", "permissionDecisionReason"),
         "cwd": _first(payload, "cwd", default=""),
+        # tool_result is the OUTCOME of a PostToolUse action (stdout/error/etc).
+        "tool_result": _first(payload, "tool_result", "toolResult", default=None),
+        "permission_mode": _first(payload, "permission_mode", "permissionMode",
+                                  default=None),
+        "transcript_path": _first(payload, "transcript_path", "transcriptPath",
+                                  default=""),
     }
-    # The real PermissionDenied payload has no decision field — the event firing IS
-    # the denial. Infer it (explicit fields above still win if ever present).
-    if event["event"] == "PermissionDenied" and event["decision"] is None:
+    # The event name is authoritative: a PermissionDenied firing IS the denial, so force
+    # decision=deny unconditionally — a spoofed/malformed "permissionDecision: allow"
+    # must not flip it.
+    if event["event"] == "PermissionDenied":
         event["decision"] = "deny"
+    # Preserve any unknown fields verbatim so future CC schema changes aren't dropped.
+    extra = {k: v for k, v in payload.items() if k not in _CONSUMED_KEYS}
+    if extra:
+        event["_extra"] = extra
     return event
 
 
@@ -61,8 +93,9 @@ def main() -> int:
         if not event.get("ts"):   # payload timestamp is often absent; stamp arrival time
             event["ts"] = datetime.now().isoformat(timespec="seconds")
         write_event(event)
-    except Exception:
-        pass
+    except Exception as e:
+        # stderr is not captured by CC and won't affect the run — surface for debugging.
+        sys.stderr.write(f"agent-pd hook error: {e}\n")
     return 0
 
 

@@ -9,6 +9,7 @@ class Action:
     ts: str | None = None
     decision: str | None = None       # 'allow' | 'deny' | None
     reason: str | None = None
+    tool_result: object = None        # PostToolUse outcome (stdout/error/etc), if any
 
 
 @dataclass
