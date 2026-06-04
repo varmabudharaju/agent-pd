@@ -27,11 +27,13 @@ Legend: 🐞 confirmed bug · ⚠️ heuristic/limitation · 📋 backlog/v2 · 
 
 ## ✅ Shipped on `feat/audit-storage-compaction`
 
-- **Unbounded audit-log growth** — `pd compact` compresses inactive sessions in-place to
-  `.jsonl.gz` and externalizes large tool-input payloads to a content-addressed blob store
-  (`~/.claude/pd/blobs/<ab>/<sha>.gz`). Compaction is lossless for detection. Active
-  sessions (most-recently-modified) are skipped so the hook can always append.
-  Addressed by `pd compact`; the storage-scalability concern is now resolved.
+- **Unbounded audit-log growth** — `pd compact` gzips inactive session logs in-place
+  (`<sid>.jsonl` → `<sid>.jsonl.gz`). Compaction is gzip-only and lossless for detection:
+  every field stays inline, so detection over a compacted session is identical to the raw
+  session. Active sessions (most-recently-modified) are skipped so the hook can always
+  append. `--prune-older-than DAYS` optionally hard-deletes compacted sessions older than N
+  days (default: keep everything). Addressed by `pd compact`; the storage-scalability
+  concern is now resolved.
 
 ---
 
@@ -105,12 +107,15 @@ Legend: 🐞 confirmed bug · ⚠️ heuristic/limitation · 📋 backlog/v2 · 
   `pd report` (forensic). No OS-notification subsystem.
 - **Blocking/intervention.** The hook stays logging-only, always exit 0. Catch-and-report,
   never arrest.
-- **Whole-session pruning (hard-delete old sessions).** `pd compact` does not delete
-  `.jsonl.gz` files or their blobs; wholesale pruning is a deliberate non-goal of the
-  storage-compaction work. Use `--prune-blobs-older-than DAYS` to reclaim blob bytes only.
-- **`pd watch` on already-compacted (gz-only) sessions.** `pd watch` tails active plain
-  `.jsonl` files — it is a live scanner, not a replay tool. For compacted sessions, use
-  `pd report` instead. Retrofitting live-tail for `.jsonl.gz` is out of scope.
+- **Bulky-field externalization (blob store).** An earlier design externalized large
+  `tool_input` fields (file content, Bash commands) into a content-addressed blob store.
+  It was **tried and rejected**: those fields are detector-read, so externalizing them
+  broke detection-losslessness. The feature shipped as gzip-only instead — see the design
+  doc's revision history. There is no blob store, no `pd show`, no blob pruning.
+- **Live-tailing an already-compacted (gz-only) session.** `pd watch` tails the active
+  plain `.jsonl` file — it is a live scanner, not a replay tool. For a compacted session,
+  use `pd report` (which reads both `.jsonl` and `.jsonl.gz`). Retrofitting live-tail for
+  `.jsonl.gz` is a non-goal.
 
 ## Test-discipline note
 
