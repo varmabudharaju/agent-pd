@@ -66,11 +66,52 @@ indirection can evade static detection. Calibrate your trust accordingly.
 - **Symlink resolution is best-effort** — the symlink must exist on disk at analysis time.
 - **`off_task` is heuristic** (word-overlap); use `pd judge` for trustworthy verdicts.
   `~/.config` sensitivity is broad and can be noisy.
-- **No cryptographic integrity on the audit log.** An agent with Bash can delete or forge
-  `~/.claude/pd/audit/*.jsonl`. pd flags access to the audit directory as sensitive-critical
-  (it **detects** the attempt) but does **not prevent** tampering, and there is no
-  tamper-evident (HMAC / hash-chain / append-only) log. This is the most significant
-  architectural gap and is documented as future work in `KNOWN-GAPS.md`.
+- **The audit log is tamper-*evident*, not tamper-*proof*.** pd now hash-chains the log so
+  corruption, truncation, reordering, and naive edits are caught by `pd verify` (see below).
+  But an agent with Bash runs as the same user: it can read the log, the head anchor, and
+  (usually) `PD_AUDIT_KEY`, so a determined attacker can re-chain the whole log after
+  tampering and still pass `pd verify`. True tamper-proofing requires an off-host
+  append-only sink the agent can't reach — see the Audit-log integrity subsection below.
+
+## Audit-log integrity
+
+Every audit event carries a `seq` (monotonic per session) and a `chain` value:
+`chain = sha256(prev_chain + canonical(event))`, or **HMAC-SHA256** if the environment
+variable `PD_AUDIT_KEY` is set. The hook computes this under a per-session file lock (safe
+under parallel subagents) and records a `<sid>.head.json` anchor pointing at the chain tail.
+The hook stays crash-safe: it always exits 0, never loses an event, and a head-write failure
+is benign (the next event re-anchors).
+
+**`pd verify [--session ID] [--all] [--audit-dir ...]`** recomputes the chain and reports:
+
+- `✓ chain intact — N event(s) verified` (exit 0)
+- `✗ TAMPER DETECTED — chain breaks at seq X (bad-link | seq-gap | unchained-after-chain)`
+  (exit 2)
+- `✗ TRUNCATED — head recorded seq H but log ends at seq L` (exit 2)
+- `✗ TAMPER DETECTED — head anchor does not match the log tail (chain was rewritten)`
+  (exit 2)
+- `⚠ no integrity data — legacy session` (exit 0, for sessions recorded before this feature)
+
+Exit code **2** on any tamper or truncation makes it scriptable; `--all` checks every
+session. The chain verifies across `pd compact` — it holds over the gzipped log because the
+canonical form is round-trip stable.
+
+**What it detects:** in-place edits, reordering, mid-log deletion, tail truncation, inserted
+unchained lines, and — with `PD_AUDIT_KEY` set — edits by someone without the key (an
+attacker who can read the log but not the key can no longer forge a valid chain).
+
+**The honest framing:** this is tamper-**evident**, not tamper-**proof**. The adversary we
+care about is a same-user agent with Bash, which can read the log, the head file, and often
+`PD_AUDIT_KEY` itself; such an attacker can re-chain the entire log after editing and pass
+`pd verify`. What the hash-chain reliably catches is corruption, truncation, reordering, and
+naive/most edits (including an attacker who edits but forgets to fix the head anchor or a
+downstream link) — and it gives an autopsy a real trust signal. True tamper-proofing would
+require shipping events to an **off-host, append-only sink** the audited agent can't reach;
+that is a possible future enhancement, not what ships today.
+
+**Recommendation:** run `pd verify` before you trust a log in an autopsy. For stronger
+deployments, set `PD_AUDIT_KEY` in an environment the audited agent **cannot read** — keying
+the chain is only as strong as the secrecy of the key.
 
 ## Privacy
 
