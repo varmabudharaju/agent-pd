@@ -19,6 +19,24 @@ DEFAULT_SENSITIVE = [
 # Bash command. Two tiers:
 #   escalation_patterns      — a PRECISE allow-rule may legitimately downgrade to info.
 #   never_downgrade_patterns — categorically dangerous; always critical, never downgraded.
+# --- rm recursive-force matching --------------------------------------------------
+# Tiering an `rm -rf` depends ENTIRELY on its TARGET, so we match the recursive+force
+# flags then a target token. `_RM_RF` matches `rm` carrying both -r and -f (combined
+# in either order: -rf/-fr/-Rf/..., or as separate flags, possibly with other flags
+# like --no-preserve-root interleaved), up to the start of the first non-flag argument.
+#   - (?:-\S+\s+)*  consumes any leading flags (e.g. --no-preserve-root, -v)
+#   - the alternation requires a combined r+f flag OR the two as separate -r/-f flags
+# A target token is then matched against the tier-specific patterns below. Targets are
+# anchored by an "end of token" lookahead — whitespace, a JSON closing quote, `*`, or
+# end of string — so `/` matches the root token but NOT a mid-path slash like /tmp/x.
+_RM_RF = (
+    r"\brm\s+(?:-\S+\s+)*"
+    r"(?:-[a-z]*r[a-z]*f[a-z]*|-[a-z]*f[a-z]*r[a-z]*|-r\b[^\"]*?\s-f|-f\b[^\"]*?\s-r)"
+    r"[a-z]*\b\s+(?:-\S+\s+)*"
+)
+# End-of-target-token: whitespace, the JSON string's closing quote, or end of blob.
+_TGT_END = r'(?=\s|"|$)'
+
 DEFAULT_ESCALATION = [
     r"\bsudo\b",
     r"\bdoas\b",
@@ -27,12 +45,22 @@ DEFAULT_ESCALATION = [
     r"\bchmod\s+\S*\+s\b",                          # setuid via symbolic mode
     r"\bchown\s+root\b",
     r"\bshred\b",
+    # whole-working-directory wipe: `rm -rf .`, `./`, or `*` -- destructive but sometimes
+    # a deliberate clean rebuild, so flag it yet let a precise allow-rule excuse it.
+    _RM_RF + r"\.\/?" + _TGT_END,
+    _RM_RF + r"\*" + _TGT_END,
+    # a recursive-force delete rooted in HOME but targeting a subpath (~/projects/x):
+    # risky enough to surface, but downgradable by a precise rule (home root is Tier 1).
+    _RM_RF + r"~/[^\"\s]",
 ]
 
 DEFAULT_NEVER_DOWNGRADE = [
-    # rm with recursive+force against a dangerous/broad target.
-    r"\brm\s+(?:-\S+\s+)*-?[a-z]*r[a-z]*f[a-z]*\b.*(?:/|~|\$HOME|\*)",
-    r"\brm\s+(?:-\S+\s+)*-?[a-z]*f[a-z]*r[a-z]*\b.*(?:/|~|\$HOME|\*)",  # -fr order
+    # Catastrophic rm: recursive+force against a SYSTEM or HOME root. Never excusable.
+    #   filesystem root: `rm -rf /`, `rm -rf /*`, `rm -rf / --flag`
+    _RM_RF + r"/" + r'(?=\s|"|\*|$)',
+    #   home root: `rm -rf ~`, `rm -rf ~/`, `rm -rf $HOME`, `rm -rf ${HOME}`
+    _RM_RF + r"~/?" + _TGT_END,
+    _RM_RF + r"\$\{?HOME\}?/?" + _TGT_END,
     r"--no-preserve-root",
     # fork bomb.
     r":\s*\(\s*\)\s*\{\s*:\s*\|\s*:\s*&\s*\}",

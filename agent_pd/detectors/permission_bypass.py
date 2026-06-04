@@ -64,9 +64,13 @@ def detect(record, rules) -> list:
             continue  # avoid double-reporting under the escalation tier
 
         # Tier 2: escalation — critical, downgradeable by a precise allow-rule.
+        # Only a SPEC-BEARING rule (e.g. Bash(rm:*)) counts: a bare `Bash` grant is too
+        # broad to excuse an escalation-tier command (a cwd-wipe, sudo, …), so we drop
+        # bare tool-grants before testing permission.
         esc = _first_match(blob, esc_patterns)
         if esc is not None:
-            permitted = is_permitted("Bash", a.tool_input, None, allow, cwd=record.cwd)
+            precise = [r for r in allow if r.strip().endswith(")") and "(" in r]
+            permitted = is_permitted("Bash", a.tool_input, None, precise, cwd=record.cwd)
             esev = info if permitted else sev
             note = " (permitted by allow-rule)" if permitted else ""
             out.append(Offense(record.agent_id, record.agent_type, OFFENSE, esev, "high",

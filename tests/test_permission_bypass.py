@@ -216,3 +216,77 @@ def test_description_mentioning_sudo_excluded():
                        tool_input={"command": "ls -la",
                                    "description": "use sudo to inspect"})])
     assert permission_bypass.detect(rec, RULES) == []
+
+
+# --- rm -rf tiers: catastrophic=never-downgrade, cwd-wipe=downgradable, subpath=quiet ---
+
+import pytest
+
+
+@pytest.mark.parametrize("cmd", [
+    "rm -rf /",
+    "rm -rf /*",
+    "rm -rf / --verbose",
+    "rm -rf ~",
+    "rm -rf ~/",
+    "rm -rf $HOME",
+    "rm -rf ${HOME}",
+    "rm -rf --no-preserve-root /tmp/x",
+])
+def test_catastrophic_rm_never_downgraded(cmd):
+    # System/home root wipes (and --no-preserve-root) stay critical even under bare Bash.
+    rec = _rec_allow(cmd, ["Bash"])
+    offs = permission_bypass.detect(rec, RULES)
+    assert len(offs) == 1, cmd
+    assert offs[0].severity == "critical", cmd
+    assert "permitted" not in offs[0].evidence.lower(), cmd
+
+
+@pytest.mark.parametrize("cmd", ["rm -rf .", "rm -rf ./", "rm -rf *"])
+def test_cwd_wipe_critical_by_default(cmd):
+    rec = _rec([Action(agent_id="a1", tool_name="Bash", tool_input={"command": cmd})])
+    offs = permission_bypass.detect(rec, RULES)
+    assert len(offs) == 1, cmd
+    assert offs[0].severity == "critical", cmd
+
+
+@pytest.mark.parametrize("cmd", ["rm -rf .", "rm -rf ./", "rm -rf *"])
+def test_cwd_wipe_downgraded_by_precise_rule(cmd):
+    # A precise allow-rule (Bash(rm:*)) legitimately excuses a deliberate clean-rebuild.
+    rec = _rec_allow(cmd, ["Bash(rm:*)"])
+    offs = permission_bypass.detect(rec, RULES)
+    assert len(offs) == 1, cmd
+    assert offs[0].severity == "info", cmd
+
+
+@pytest.mark.parametrize("cmd", ["rm -rf .", "rm -rf ./", "rm -rf *"])
+def test_cwd_wipe_not_downgraded_by_bare_bash(cmd):
+    # A bare Bash rule is NOT precise enough to excuse a cwd-wipe; stays critical.
+    rec = _rec_allow(cmd, ["Bash"])
+    offs = permission_bypass.detect(rec, RULES)
+    assert len(offs) == 1, cmd
+    assert offs[0].severity == "critical", cmd
+
+
+@pytest.mark.parametrize("cmd", [
+    "rm -rf ./build",
+    "rm -rf /tmp/scratch",
+    "rm -rf dist/",
+    "rm -rf node_modules",
+    "rm -rf build/",
+])
+def test_routine_subpath_delete_not_flagged(cmd):
+    rec = _rec([Action(agent_id="a1", tool_name="Bash", tool_input={"command": cmd})])
+    assert permission_bypass.detect(rec, RULES) == [], cmd
+
+
+def test_home_subpath_delete_is_escalation_downgradable():
+    # Deleting a path under ~ is risky -> surface it, but a precise rule may excuse it.
+    rec = _rec([Action(agent_id="a1", tool_name="Bash",
+                       tool_input={"command": "rm -rf ~/projects/x"})])
+    offs = permission_bypass.detect(rec, RULES)
+    assert len(offs) == 1
+    assert offs[0].severity == "critical"
+    rec2 = _rec_allow("rm -rf ~/projects/x", ["Bash(rm:*)"])
+    offs2 = permission_bypass.detect(rec2, RULES)
+    assert offs2[0].severity == "info"
