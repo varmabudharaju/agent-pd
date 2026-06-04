@@ -39,9 +39,29 @@ def _load_one(path: Path):
     return _parse_tools(_frontmatter(text))
 
 
+def _find_agent_file(base: Path, agent_type: str):
+    """Locate `<base>/<agent_type>.md` case-insensitively. A subagent could self-
+    report `agent_type` with altered casing ("Explore" vs file "explore.md") to
+    dodge its declared allowlist; a case-insensitive directory scan closes that.
+    Robust on case-SENSITIVE filesystems (Linux) where a naive lower() would
+    mis-resolve a kebab file like `code-reviewer.md`."""
+    want = f"{agent_type}.md".lower()
+    try:
+        entries = list(base.iterdir())
+    except OSError:
+        return None
+    for entry in entries:
+        if entry.name.lower() == want:
+            return entry
+    return None
+
+
 def load_agent_tools(agent_type: str, cwd: str = "", config_dir: str = None):
     """Project `.claude/agents/<type>.md` takes precedence over the user config dir.
-    Returns a set of allowed tool names, or None (no def / no `tools:` key)."""
+    Returns a set of allowed tool names, or None (no def / no `tools:` key).
+
+    The `<type>.md` lookup is case-insensitive so an agent cannot escape its
+    declared tool allowlist by reporting a differently-cased agent_type."""
     if not agent_type:
         return None
     bases = []
@@ -50,7 +70,10 @@ def load_agent_tools(agent_type: str, cwd: str = "", config_dir: str = None):
     cfg = config_dir or os.environ.get("CLAUDE_CONFIG_DIR") or str(Path.home() / ".claude")
     bases.append(Path(cfg) / "agents")
     for base in bases:
-        tools = _load_one(base / f"{agent_type}.md")
+        found = _find_agent_file(base, agent_type)
+        if found is None:
+            continue
+        tools = _load_one(found)
         if tools is not None:
             return tools
     return None

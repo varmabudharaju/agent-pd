@@ -36,6 +36,26 @@ def test_classify_sensitive_even_inside():
     assert scope.classify(home_key, "/proj", [], pats, project_boundary=True)[0] == "sensitive"
 
 
+def test_classify_dotclaude_sensitive():
+    # ~/.claude (home) is sensitive: covers the pd audit dir, settings, hooks.
+    from agent_pd.config import DEFAULT_SENSITIVE
+    pats = DEFAULT_SENSITIVE
+    audit = os.path.join(os.path.expanduser("~"), ".claude", "pd", "audit", "s1.jsonl")
+    assert scope.classify(audit, "/proj", [], pats, project_boundary=True)[0] == "sensitive"
+    settings = os.path.join(os.path.expanduser("~"), ".claude", "settings.json")
+    assert scope.classify(settings, "/proj", [], pats, project_boundary=True)[0] == "sensitive"
+
+
+def test_classify_project_local_dotclaude_not_sensitive_by_pattern():
+    # A project-local <proj>/.claude (project not in home) must NOT be flagged
+    # sensitive by the ~/.claude rule -- it resolves to a different absolute path.
+    from agent_pd.config import DEFAULT_SENSITIVE
+    pats = DEFAULT_SENSITIVE
+    kind, _ = scope.classify("/proj/.claude/settings.json", "/proj", [], pats,
+                             project_boundary=True)
+    assert kind != "sensitive"
+
+
 def test_classify_allowlist():
     kind, _ = scope.classify("/proj/tests/a.py", "/proj", ["src/"], [], project_boundary=True)
     assert kind == "allowlist"

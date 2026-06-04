@@ -5,6 +5,10 @@ import yaml
 
 DEFAULT_SENSITIVE = [
     "~/.ssh", "~/.aws", "~/.gnupg", "~/.kube", "~/.config",
+    # ~/.claude holds the pd audit dir, settings, and hooks -- all security-
+    # relevant. Flagging it stops an agent from tampering with its own evidence
+    # (e.g. `> ~/.claude/pd/audit/<sid>.jsonl`) or reading/editing CC config.
+    "~/.claude",
     ".env", ".env.*",
     "*.pem", "*.key", "id_rsa", "id_ed25519", "*.p12",
     ".netrc", ".npmrc", ".pypirc", ".git-credentials",
