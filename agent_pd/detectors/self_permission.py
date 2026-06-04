@@ -84,13 +84,31 @@ def _bash_write_intent(cmd: str) -> bool:
     return False
 
 
+def _shell_tokens(cmd: str):
+    """Whitespace/shlex split of a command into bare tokens, surrounding quotes
+    stripped. Used so a bare basename like `pd-rules.yaml` (no slash, which the
+    path-ish extractors skip) is still tested against the control-path rules."""
+    import shlex
+    try:
+        return shlex.split(cmd)
+    except ValueError:
+        return [t.strip("\"'") for t in cmd.split()]
+
+
+def _control_candidates(cmd: str):
+    """All path candidates the command references: path-ish slash tokens AND raw
+    shell tokens (plus their basenames), so bare control-file basenames surface."""
+    cands = set(scope.extract_paths(cmd))
+    cands.update(_PATHISH_RE.findall(cmd))
+    for tok in _shell_tokens(cmd):
+        cands.add(tok)
+    return cands
+
+
 def _bash_touches_control(cmd: str, cwd: str):
-    """Return True if any path the command references (via scope.extract_paths or any
-    path-ish token in the raw text) resolves to a control path."""
-    candidates = set(scope.extract_paths(cmd))
-    candidates.update(_PATHISH_RE.findall(cmd))
-    for raw in candidates:
-        # check both the raw shape and the cwd-resolved absolute form
+    """Return True if any path/token the command references resolves to a control path."""
+    for raw in _control_candidates(cmd):
+        # check the raw shape, its basename, and the cwd-resolved absolute form
         if _is_control_path(raw):
             return True
         if _is_control_path(scope.resolve(raw, cwd)):
@@ -118,12 +136,9 @@ def detect(record, rules) -> list:
                 continue
             key = _perm_key_in(cmd)
             # report the first control path we can name for clearer evidence
-            named = next((p for p in scope.extract_paths(cmd) if _is_control_path(p)
-                          or _is_control_path(scope.resolve(p, record.cwd))), None)
-            if named is None:
-                named = next((p for p in _PATHISH_RE.findall(cmd)
-                              if _is_control_path(p)
-                              or _is_control_path(scope.resolve(p, record.cwd))), "")
+            named = next((p for p in _control_candidates(cmd)
+                          if _is_control_path(p)
+                          or _is_control_path(scope.resolve(p, record.cwd))), "")
             out.append(Offense(record.agent_id, record.agent_type, OFFENSE, sev, "high",
                                f"Bash wrote to a control file {named} (self-permissioning{_enrich(key)})"))
     return out
