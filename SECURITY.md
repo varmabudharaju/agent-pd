@@ -70,8 +70,9 @@ indirection can evade static detection. Calibrate your trust accordingly.
   corruption, truncation, reordering, and naive edits are caught by `pd verify` (see below).
   But an agent with Bash runs as the same user: it can read the log, the head anchor, and
   (usually) `PD_AUDIT_KEY`, so a determined attacker can re-chain the whole log after
-  tampering and still pass `pd verify`. True tamper-proofing requires an off-host
-  append-only sink the agent can't reach — see the Audit-log integrity subsection below.
+  tampering and still pass `pd verify`. The off-host sink (`pd sink push`, below) closes the
+  *retroactive-deletion* half of this — events already shipped off-host can't be made to
+  disappear — but does not stop a same-user agent from forging entries or disabling the hook.
 
 ## Audit-log integrity
 
@@ -105,13 +106,68 @@ care about is a same-user agent with Bash, which can read the log, the head file
 `PD_AUDIT_KEY` itself; such an attacker can re-chain the entire log after editing and pass
 `pd verify`. What the hash-chain reliably catches is corruption, truncation, reordering, and
 naive/most edits (including an attacker who edits but forgets to fix the head anchor or a
-downstream link) — and it gives an autopsy a real trust signal. True tamper-proofing would
-require shipping events to an **off-host, append-only sink** the audited agent can't reach;
-that is a possible future enhancement, not what ships today.
+downstream link) — and it gives an autopsy a real trust signal. To raise the bar past
+"locally defeatable," ship the chained events to an **off-host, append-only sink** the
+audited agent can't reach — see the next subsection.
 
 **Recommendation:** run `pd verify` before you trust a log in an autopsy. For stronger
 deployments, set `PD_AUDIT_KEY` in an environment the audited agent **cannot read** — keying
 the chain is only as strong as the secrecy of the key.
+
+## Audit-log integrity — off-host sink
+
+The hash-chain makes the local log tamper-**evident** but **locally defeatable**: a same-user
+agent can re-chain the whole file. The off-host sink forwards each chained event to a
+destination outside the host, so a later local rewrite cannot reach the events already
+shipped — the off-host copy is the witness.
+
+**`pd sink push [--session ID] [--all]`** forwards only the un-sent chained events for a
+session (those whose `seq` exceeds the last-forwarded seq) and advances the per-session state
+(`<sid>.sink`) only after the sink durably accepts them. It is **incremental and idempotent**:
+on success it never re-sends; on failure it does **not** advance, so the same events retry on
+the next push — no skip, no double-send. Only chained events are forwarded; legacy/pre-chain
+events (no `seq`) are intentionally skipped.
+
+**`pd sink status [--session ID] [--all]`** shows `forwarded/last` per session. When
+`forwarded > last` it flags **"⚠ remote ahead"** — more events were shipped off-host than
+remain in the local log, i.e. a local-truncation/tamper signal.
+
+**The hook is untouched.** There is no network on the per-tool-call hot path; the local audit
+log *is* the spool. Run `pd sink push` on a schedule or from a Stop hook to drain it.
+
+**Backends (stdlib only):**
+
+- **file** — appends NDJSON to a path. Point it at a different mount, a WORM volume, or an
+  append-only dir (`chattr +a`). The append-only guarantee is the operator's responsibility.
+- **http** — POSTs NDJSON to your collector, with `Authorization: Bearer $PD_SINK_TOKEN` when
+  a token is set.
+
+**Config.** A `sink` section in the rules file (`type: file|http`, `url`, `path`, `timeout`),
+with env overrides `PD_SINK_TYPE` / `PD_SINK_URL` / `PD_SINK_PATH` / `PD_SINK_TIMEOUT`. The
+secret token is **env-only** (`PD_SINK_TOKEN`) and is deliberately ignored if placed in a
+config file, so it never lives in a checked-in / world-readable file.
+
+**Transport security.** TLS certificates are verified by default; the token is **refused over
+cleartext `http://` to a non-loopback host** (use `https://`, or unset the token), and
+**redirects are not followed** (a 3xx could re-send the `Authorization` header to another host
+= a cross-host credential leak). Serialization failures map to a clean error, never a crash.
+
+**The honest framing.** The sink upgrades integrity from "tamper-evident, locally defeatable"
+to **"retroactive deletion/alteration of genuine events is prevented"** — but *only* if the
+destination is genuinely append-only and the write credential cannot delete or modify what's
+already there. That is a **deployment requirement** (server-enforced); pd cannot guarantee it.
+It is still **not fully tamper-proof**, and the same "raises the bar, not a sandbox" framing
+applies:
+
+- The same-user agent holds the write credential, so it can **forge** entries into the sink.
+- It can **disable the hook** so nothing is sent (a gap, not a deletion).
+
+What you do get: a damning event already shipped off-host can't be made to disappear, and
+`pd verify` / `integrity.verify_events` can prove local↔off-host divergence.
+
+**Recommendation:** run `pd sink push` on a schedule (or a Stop hook); use an append-only
+collector with **write-only, non-deleting** credentials; set `PD_SINK_TOKEN` only in an
+environment the audited agent **cannot read**; always use `https://` for remote sinks.
 
 ## Privacy
 
