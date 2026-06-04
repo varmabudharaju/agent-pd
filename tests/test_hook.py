@@ -1,6 +1,19 @@
 import json
+import os
+
+import pytest
+
 import agent_pd.hook as hook
+import agent_pd.integrity as integrity
 from agent_pd.hook import build_event, write_event, audit_path, main
+from agent_pd.integrity import (
+    CHAIN_KEY,
+    SEQ_KEY,
+    GENESIS,
+    verify_events,
+    head_path,
+    read_head,
+)
 
 def test_build_event_normalizes_fields():
     payload = {
@@ -130,3 +143,136 @@ def test_write_event_appends_to_session_file(tmp_path):
     assert json.loads(lines[0])["agent_id"] == "a1"
     write_event(ev, audit_dir=tmp_path)
     assert len(out.read_text().splitlines()) == 2
+
+
+# ---- hash-chain wiring ----
+
+def _read_events(path):
+    return [json.loads(l) for l in path.read_text().splitlines() if l.strip()]
+
+
+def test_write_event_chains_single(tmp_path):
+    write_event({"event": "PostToolUse", "session_id": "c1"}, audit_dir=tmp_path)
+    out = audit_path("c1", audit_dir=tmp_path)
+    evs = _read_events(out)
+    assert len(evs) == 1
+    assert evs[0][SEQ_KEY] == 1
+    assert evs[0].get(CHAIN_KEY)
+    # head file exists and matches
+    hp = head_path("c1", audit_dir=tmp_path)
+    assert hp.exists()
+    prev_hex, prev_seq = read_head("c1", audit_dir=tmp_path)
+    assert prev_seq == 1
+    assert prev_hex == evs[0][CHAIN_KEY]
+
+
+def test_write_event_three_sequential_verify(tmp_path):
+    for i in range(3):
+        write_event({"event": "PostToolUse", "session_id": "c2", "n": i},
+                    audit_dir=tmp_path)
+    evs = _read_events(audit_path("c2", audit_dir=tmp_path))
+    assert [e[SEQ_KEY] for e in evs] == [1, 2, 3]
+    res = verify_events(evs)
+    assert res["ok"] is True
+    assert res["verified"] == 3
+
+
+def test_write_event_tamper_detected(tmp_path):
+    for i in range(3):
+        write_event({"event": "PostToolUse", "session_id": "c3", "n": i},
+                    audit_dir=tmp_path)
+    out = audit_path("c3", audit_dir=tmp_path)
+    evs = _read_events(out)
+    evs[1]["n"] = 999  # tamper middle, do not recompute chain
+    out.write_text("\n".join(json.dumps(e) for e in evs) + "\n")
+    res = verify_events(_read_events(out))
+    assert res["ok"] is False
+    assert res["reason"] == "bad-link"
+
+
+def test_write_event_head_fallback(tmp_path):
+    for i in range(3):
+        write_event({"event": "PostToolUse", "session_id": "c4", "n": i},
+                    audit_dir=tmp_path)
+    head_path("c4", audit_dir=tmp_path).unlink()
+    write_event({"event": "PostToolUse", "session_id": "c4", "n": 3},
+                audit_dir=tmp_path)
+    evs = _read_events(audit_path("c4", audit_dir=tmp_path))
+    assert [e[SEQ_KEY] for e in evs] == [1, 2, 3, 4]
+    assert verify_events(evs)["ok"] is True
+
+
+def test_write_event_keyed(tmp_path, monkeypatch):
+    monkeypatch.setenv("PD_AUDIT_KEY", "secret")
+    for i in range(3):
+        write_event({"event": "PostToolUse", "session_id": "c5", "n": i},
+                    audit_dir=tmp_path)
+    evs = _read_events(audit_path("c5", audit_dir=tmp_path))
+    assert verify_events(evs, key=b"secret")["ok"] is True
+    assert verify_events(evs, key=None)["ok"] is False
+
+
+def test_write_event_crash_safe_fallback(tmp_path, monkeypatch):
+    def boom(*a, **k):
+        raise RuntimeError("chain broke")
+    monkeypatch.setattr(integrity, "next_link", boom)
+    # must NOT raise
+    write_event({"event": "PostToolUse", "session_id": "c6", "n": 0},
+                audit_dir=tmp_path)
+    evs = _read_events(audit_path("c6", audit_dir=tmp_path))
+    assert len(evs) == 1
+    assert evs[0]["event"] == "PostToolUse"
+    assert SEQ_KEY not in evs[0]  # unchained fallback
+
+
+def test_main_returns_zero_on_chain_error(tmp_path, monkeypatch):
+    def boom(*a, **k):
+        raise RuntimeError("chain broke")
+    monkeypatch.setattr(integrity, "next_link", boom)
+    monkeypatch.setattr(hook, "DEFAULT_AUDIT_DIR", tmp_path)
+    payload = json.dumps({"hook_event_name": "PostToolUse", "session_id": "c7"})
+    monkeypatch.setattr(hook.sys, "stdin", __import__("io").StringIO(payload))
+    assert main() == 0
+    evs = _read_events(audit_path("c7", audit_dir=tmp_path))
+    assert len(evs) == 1
+
+
+def test_write_event_legacy_preamble(tmp_path):
+    out = audit_path("c8", audit_dir=tmp_path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(
+        json.dumps({"event": "PostToolUse", "session_id": "c8", "legacy": 1}) + "\n"
+        + json.dumps({"event": "PostToolUse", "session_id": "c8", "legacy": 2}) + "\n"
+    )
+    write_event({"event": "PostToolUse", "session_id": "c8", "n": 0},
+                audit_dir=tmp_path)
+    evs = _read_events(out)
+    assert len(evs) == 3
+    assert evs[2][SEQ_KEY] == 1  # chain starts fresh after legacy preamble
+    res = verify_events(evs)
+    assert res["ok"] is True
+    assert res["legacy"] == 2
+    assert res["verified"] == 1
+
+
+def test_write_event_concurrent_no_dup_seq(tmp_path):
+    import threading
+
+    N = 10
+    barrier = threading.Barrier(N)
+
+    def worker(i):
+        barrier.wait()
+        write_event({"event": "PostToolUse", "session_id": "c9", "n": i},
+                    audit_dir=tmp_path)
+
+    threads = [threading.Thread(target=worker, args=(i,)) for i in range(N)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    evs = _read_events(audit_path("c9", audit_dir=tmp_path))
+    seqs = sorted(e[SEQ_KEY] for e in evs)
+    assert seqs == list(range(1, N + 1)), seqs  # exactly 1..N, no dups/gaps
+    assert verify_events(evs)["ok"] is True
