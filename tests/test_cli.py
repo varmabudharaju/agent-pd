@@ -78,3 +78,60 @@ def test_list_shows_session(tmp_path, capsys):
     rc = main(["list", "--projects-dir", str(projects), "--audit-dir", str(audit)])
     assert rc == 0
     assert "s1" in capsys.readouterr().out
+
+
+import gzip
+from agent_pd import store
+
+
+def test_compact_subcommand_parses():
+    args = build_parser().parse_args(
+        ["compact", "--session", "s1", "--threshold", "4096",
+         "--prune-blobs-older-than", "30", "--max-blob-bytes", "1000", "--dry-run"])
+    assert args.session == "s1" and args.threshold == 4096
+    assert args.prune_blobs_older_than == 30 and args.max_blob_bytes == 1000
+    assert args.dry_run is True
+
+
+def test_compact_command_compacts_a_session(tmp_path, capsys):
+    audit = tmp_path / "audit"; audit.mkdir()
+    blobs = tmp_path / "blobs"
+    big = "Z" * 5000
+    (audit / "s1.jsonl").write_text(json.dumps(
+        {"event": "PostToolUse", "session_id": "s1", "tool_name": "Write",
+         "tool_input": {"file_path": "x.py", "content": big}}) + "\n")
+    rc = main(["compact", "--session", "s1",
+               "--audit-dir", str(audit), "--blob-dir", str(blobs)])
+    assert rc == 0
+    assert (audit / "s1.jsonl.gz").exists()
+    assert not (audit / "s1.jsonl").exists()
+    assert "compacted" in capsys.readouterr().out.lower()
+
+
+def test_compact_dry_run_writes_nothing(tmp_path, capsys):
+    audit = tmp_path / "audit"; audit.mkdir()
+    blobs = tmp_path / "blobs"
+    (audit / "s1.jsonl").write_text(json.dumps(
+        {"tool_name": "Write", "tool_input": {"content": "Z" * 5000}}) + "\n")
+    rc = main(["compact", "--session", "s1", "--dry-run",
+               "--audit-dir", str(audit), "--blob-dir", str(blobs)])
+    assert rc == 0
+    assert (audit / "s1.jsonl").exists()             # untouched
+    assert not (audit / "s1.jsonl.gz").exists()
+
+
+def test_show_blob_prints_content(tmp_path, capsys):
+    blobs = tmp_path / "blobs"
+    sha = store.put_blob(b"recovered content", blobs)
+    rc = main(["show", "--blob", sha, "--blob-dir", str(blobs)])
+    assert rc == 0
+    assert "recovered content" in capsys.readouterr().out
+
+
+def test_list_includes_compacted_sessions(tmp_path, capsys):
+    audit = tmp_path / "audit"; audit.mkdir()
+    projects = tmp_path / "projects"; projects.mkdir()
+    (audit / "a.jsonl.gz").write_bytes(gzip.compress(b'{"i":1}\n'))
+    rc = main(["list", "--audit-dir", str(audit), "--projects-dir", str(projects)])
+    assert rc == 0
+    assert "a" in capsys.readouterr().out.split()
