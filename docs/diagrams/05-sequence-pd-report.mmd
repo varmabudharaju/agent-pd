@@ -1,0 +1,23 @@
+sequenceDiagram
+    autonumber
+    participant U as You
+    participant CLI as cli.py (_cmd_report)
+    participant S as store.iter_events
+    participant M as LiveMonitor (live.py)
+    participant D as run_detectors
+    participant R as report.py
+
+    U->>CLI: pd report --session [sid]
+    CLI->>S: read [sid].jsonl (+ .jsonl.gz), dedup
+    S-->>CLI: ordered events
+    loop per event
+        CLI->>M: process(event, rules)
+        Note over M: create or update the AgentRecord — load brief (meta.json),<br/>allow_rules (settings), tool_allowlist (from the agent definition),<br/>then append an Action
+    end
+    M-->>CLI: AgentRecords (main + each subagent)
+    loop per record
+        CLI->>D: run_detectors(record, rules)
+        D-->>CLI: Offenses (with severity + evidence)
+    end
+    CLI->>R: render_markdown(records, offenses)
+    R-->>U: police report (per-agent digest + offense tables)

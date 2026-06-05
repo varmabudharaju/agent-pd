@@ -1,0 +1,17 @@
+flowchart LR
+    H[("&lt;sid&gt;.head.json<br/>seq=N, chain=Hn")]
+    E0["event seq=1<br/>chain=H1=sha256(GENESIS+e1)"]
+    E1["event seq=2<br/>chain=H2=sha256(H1+e2)"]
+    E2["event seq=3<br/>chain=H3=sha256(H2+e3)"]
+    E0 --> E1 --> E2
+    E2 -. "anchors tail" .- H
+
+    V["pd verify<br/>recompute each link<br/>+ compare head"]
+    E0 & E1 & E2 --> V
+    V --> R{"intact?"}
+    R -- yes --> OK["✓ chain intact (exit 0)"]
+    R -- "broken link / seq gap /<br/>unchained-after-chain" --> T["✗ TAMPER (exit 2)"]
+    R -- "head seq &gt; last logged" --> TR["✗ TRUNCATED (exit 2)"]
+
+    classDef bad fill:#ffd9d9,stroke:#c62828;
+    class T,TR bad

@@ -1,0 +1,20 @@
+sequenceDiagram
+    autonumber
+    participant CC as Claude Code
+    participant H as hook.py (main)
+    participant I as integrity.py
+    participant FS as [sid].jsonl + .head.json
+
+    CC->>H: tool event JSON on stdin
+    Note over H: build_event() — read fields defensively<br/>(snake_case + camelCase), force decision=deny<br/>on PermissionDenied, stash unknown keys in _extra
+    H->>FS: acquire per-session flock (serialize subagents)
+    H->>I: read head (prev seq, prev chain)
+    I-->>H: prev_link
+    Note over I: chain = sha256(prev_chain + canonical(event))<br/>or HMAC-SHA256 if PD_AUDIT_KEY set
+    H->>FS: append chained line, update [sid].head.json
+    H->>FS: release flock
+    H-->>CC: exit 0 (ALWAYS)
+
+    rect rgb(255,235,235)
+    Note over H,FS: On ANY failure (lock, head IO, hashing) it falls back to<br/>appending the ORIGINAL unchained event — never lost, exit code always 0
+    end

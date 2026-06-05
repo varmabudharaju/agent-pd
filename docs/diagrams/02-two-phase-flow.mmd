@@ -1,0 +1,23 @@
+flowchart LR
+    subgraph CAPTURE["CAPTURE — automatic, all sessions, zero intelligence"]
+        direction TB
+        E["hook event<br/>(JSON on stdin)"] --> BE["build_event()<br/>normalize fields"]
+        BE --> CH["integrity.next_link()<br/>seq + chain hash"]
+        CH --> AP["append line +<br/>update &lt;sid&gt;.head.json"]
+    end
+
+    LOG[("~/.claude/pd/audit/<br/>&lt;sid&gt;.jsonl(.gz)")]
+
+    subgraph READ["READ — on demand, all the intelligence, zero tokens"]
+        direction TB
+        IT["store.iter_events()<br/>.jsonl + .jsonl.gz"] --> GA["investigator.gather()<br/>→ AgentRecords"]
+        GA --> DET["run_detectors()<br/>6 detectors"]
+        DET --> RND["render / report / live feed"]
+    end
+
+    AP --> LOG --> IT
+
+    classDef cap fill:#ffe9c7,stroke:#b06f00;
+    classDef rd fill:#e7f7e7,stroke:#2e7d32;
+    class CAPTURE cap
+    class READ rd

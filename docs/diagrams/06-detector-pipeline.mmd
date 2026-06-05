@@ -1,0 +1,24 @@
+flowchart TD
+    REC["AgentRecord<br/>(actions + brief + allow_rules + tool_allowlist)"]
+
+    REC --> P1 & P2 & P3 & P4 & P5 & P6
+
+    P1["permission_bypass<br/>denied calls + 2-tier Bash regex<br/>(never-downgrade vs escalation)"]
+    P2["out_of_scope<br/>file/Bash path outside project<br/>OR sensitive path/credential file"]
+    P3["self_permission<br/>write to own control files<br/>(.claude/*, pd-rules.yaml)"]
+    P4["tool_not_allowed<br/>subagent tool ∉ declared allowlist"]
+    P5["redundant<br/>exact-duplicate tool calls"]
+    P6["off_task<br/>search vs brief word-overlap<br/>(heuristic)"]
+
+    P1 & P2 --> SEV{"matches a permission<br/>allow-rule?"}
+    SEV -- "yes (and not sensitive/<br/>catastrophic)" --> INFO["downgrade to info<br/>(not a crime)"]
+    SEV -- "no" --> FULL["full severity<br/>(critical / high)"]
+    P3 & P4 & P5 --> FULL
+    P6 --> REVIEW["review (low)<br/>→ pd judge to confirm"]
+
+    INFO & FULL & REVIEW --> OUT["Offense list<br/>(agent, severity, confidence, evidence)"]
+
+    classDef crit fill:#ffd9d9,stroke:#c62828;
+    classDef info fill:#eee,stroke:#888;
+    class FULL crit
+    class INFO info

@@ -1,0 +1,13 @@
+flowchart LR
+    LOG[("local &lt;sid&gt;.jsonl<br/>(chained)")]
+    ST[("&lt;sid&gt;.sink<br/>last-forwarded seq")]
+    PUSH["pd sink push<br/>send events where seq &gt; last"]
+    DEST[("off-host sink<br/>file (WORM) / http collector<br/>append-only")]
+
+    LOG --> PUSH
+    ST --> PUSH
+    PUSH -- "POST/append NDJSON<br/>(https + Bearer token, env-only)" --> DEST
+    DEST -- "durably accepted" --> PUSH
+    PUSH -- "advance only on success<br/>(idempotent, retries on failure)" --> ST
+
+    DEST --> STATUS["pd sink status<br/>forwarded/last; flags<br/>⚠ remote ahead = local truncation"]
