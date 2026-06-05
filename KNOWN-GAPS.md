@@ -99,13 +99,40 @@ where a real crime could slip past as `info` or go uncounted. Tests 155 → 347.
     `tools:` allowlist (read from `.claude/agents/<type>.md` frontmatter, carried on
     `AgentRecord.tool_allowlist`).
 
+## ✅ Shipped 2026-06-04 (release-hardening — two under-flag fixes)
+
+Both found by careful empirical testing against the real engine while preparing for public
+release; both are the **under-flag** class (a real crime slipping past), fixed TDD.
+
+- **Bare-relative credential files were invisible to non-path commands.** `out_of_scope`
+  only extracted a *bare* relative filename (no `/`, `~`, `./`) for a fixed `PATH_COMMANDS`
+  set (`cat`, `head`, `cp`, …), so `grep KEY .env`, `base64 .env`, `tar czf out .env`,
+  `xxd .env` slipped past entirely — a credential-read blind spot. `scope.extract_paths`
+  now takes `sensitive_patterns` and emits a bare token whose **basename** matches the
+  sensitive set (`.env`, `.env.*`, `*.pem`, `id_rsa`, …) regardless of the command or
+  argument position; `out_of_scope` passes `rules.sensitive_patterns` through. Non-sensitive
+  bare tokens (`grep KEY data.txt`) are still ignored (no over-flag). A *search term* that
+  looks like a credential name (`grep id_rsa file`) is over-flagged by design — acceptable,
+  since the bias is to never miss a real credential read. (`fix/env-credential-bare-token`;
+  see `docs/manual-tests/01-bypass-and-scope.md` cases R1–R3.)
+- **camelCase `hookEventName` was not mapped to the event field.** `build_event` read the
+  event name from `hook_event_name`/`event` but not the camelCase `hookEventName`, even
+  though every other field (`sessionId`, `toolName`, `agentId`, …) had a camelCase fallback.
+  A camelCase payload recorded as `event="unknown"`, and — worse — a camelCase
+  `PermissionDenied` would miss the event-name force-deny, so a **denied call would not be
+  flagged critical**. Added `hookEventName` to the mapping and `_CONSUMED_KEYS`. Claude Code
+  currently sends snake_case, so this was a latent robustness gap, not a live regression.
+  (`fix/hook-camelcase-event-name`.)
+
 ## ⚠️ Heuristic limits / by-design
 
 - **Bash path extraction is heuristic by nature.** It catches literal paths
   (`cat ../x`, `ls /etc`, `cd ..`, `find /`), now recurses into interpreter one-liners,
-  expands single-level `$VAR` assignments, and resolves symlinks best-effort — but static
-  analysis cannot follow every dynamically-constructed path (see Residual limitations).
-  Deterministic file-tool checks remain exact.
+  expands single-level `$VAR` assignments, resolves symlinks best-effort, and (since
+  2026-06-04) catches **bare-relative credential filenames** (`.env`, `*.pem`, `id_rsa`)
+  for *any* command, not just the known path-commands — but static analysis cannot follow
+  every dynamically-constructed path (see Residual limitations). Deterministic file-tool
+  checks remain exact.
 - **`~/.config` is broad for `critical`** and may be noisy (it holds lots of innocuous
   app config) — consider narrowing it in tuning.
 - **Permission-aware severity (permissions.py) matches faithfully but still under-flags
