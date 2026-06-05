@@ -312,8 +312,10 @@ python3 -m pytest -q             # 435 tests, pure (no API key needed)
 ```
 
 TDD throughout; detectors, render, live, and judge are all unit-tested with no network. Design
-specs and the original implementation plan are under `docs/superpowers/`. Architecture and the
-detector internals are documented in [HANDOFF.md](HANDOFF.md).
+specs and the original implementation plan are under `docs/superpowers/`. For the design in
+depth: [SYSTEM-DESIGN.md](SYSTEM-DESIGN.md) (formal design doc — goals, components, permission
+model, trade-offs), [ARCHITECTURE.md](ARCHITECTURE.md) (diagrams), and [HANDOFF.md](HANDOFF.md)
+(detector internals).
 
 ## License
 
