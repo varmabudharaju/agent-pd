@@ -10,7 +10,7 @@ permission prompts or an OS sandbox. agent-pd tells you what happened, faithfull
 fact (or live as it happens).
 
 - **Repo:** https://github.com/varmabudharaju/agent-pd
-- **Status:** v0.1.0 · Python ≥3.11 · 435 tests passing · zero runtime deps (PyYAML only)
+- **Status:** v0.1.0 · Python ≥3.11 · 438 tests passing · zero runtime deps (PyYAML only)
 - **Covers main + every subagent**, including those spawned by Claude Code's new dynamic
   **Workflow** tool (verified against recorded `workflow-subagent` hook events). The one
   caveat: Workflow subagents carry no brief, so only the heuristic `off_task` detector can't
@@ -308,7 +308,7 @@ sessions run).
 ```bash
 pip install --user -e .          # core
 pip install --user -e ".[judge]" # + anthropic SDK (only for the API judge backend)
-python3 -m pytest -q             # 435 tests, pure (no API key needed)
+python3 -m pytest -q             # 438 tests, pure (no API key needed)
 ```
 
 TDD throughout; detectors, render, live, and judge are all unit-tested with no network. Design
