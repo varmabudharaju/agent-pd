@@ -163,7 +163,7 @@ def _extract_from_script(script: str) -> list:
     return out
 
 
-def _extract_one(command: str, assigns: dict = None) -> list:
+def _extract_one(command: str, assigns: dict = None, sensitive_patterns: list = None) -> list:
     if assigns is None:
         assigns = {}
     try:
@@ -196,10 +196,16 @@ def _extract_one(command: str, assigns: dict = None) -> list:
         seen_positional = True
         if looks or (binary in PATH_COMMANDS and first_positional):
             out.append(t)
+        elif sensitive_patterns and _matches_sensitive(t, sensitive_patterns):
+            # A bare relative credential file (.env, *.pem, id_rsa) handed to a command
+            # we don't model (grep, base64, tar, ...) or in a non-first position would
+            # otherwise be invisible. Match its basename against the sensitive set so a
+            # credential access is never silently missed, whatever the command.
+            out.append(t)
     return out
 
 
-def extract_paths(command: str) -> list:
+def extract_paths(command: str, sensitive_patterns: list = None) -> list:
     """Heuristically pull filesystem paths out of a Bash command. Handles env-var
     prefixes (`FOO=bar cat /x`), a leading sudo, and compound commands (splits on
     `| || && ;` and inspects each segment). Conservative per-segment: a token is a path
@@ -213,7 +219,7 @@ def extract_paths(command: str) -> list:
     out, seen = [], set()
     assigns = {}            # NAME=value recorded across segments (Evasion 2)
     for seg in _SEG_RE.split(command or ""):
-        for p in _extract_one(seg, assigns):
+        for p in _extract_one(seg, assigns, sensitive_patterns):
             if p not in seen:
                 seen.add(p)
                 out.append(p)

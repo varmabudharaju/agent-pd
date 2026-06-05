@@ -12,12 +12,12 @@ Run from the repo root with `python3` and an editable install (`pip install --us
 
 | File | Area | Cases | Result |
 |---|---|---|---|
-| [`01-bypass-and-scope.md`](01-bypass-and-scope.md) | `permission_bypass`, `out_of_scope` (escalation tiers, sensitive paths, project boundary, `$VAR`, interpreter one-liners, `scope_dirs`) | 18 | 18/18 ✅ |
+| [`01-bypass-and-scope.md`](01-bypass-and-scope.md) | `permission_bypass`, `out_of_scope` (escalation tiers, sensitive paths incl. `.env`, project boundary, `$VAR`, interpreter one-liners, `scope_dirs`) | 21 | 21/21 ✅ |
 | [`02-self-perm-tools-dup-offtask.md`](02-self-perm-tools-dup-offtask.md) | `self_permission`, `tool_not_allowed`, `redundant`, `off_task` | 12 | 11 ✅, 1 by-design note |
 | [`03-permission-aware-severity.md`](03-permission-aware-severity.md) | Allow-rule downgrade to `info`; the three never-downgrade guarantees; operator-split, redirect isolation, globs, word-boundary | 10 | 10/10 ✅ |
 | [`04-integrity-compact-sink.md`](04-integrity-compact-sink.md) | `pd verify` (tamper / truncation / reorder / insert / HMAC / legacy), `pd compact` losslessness, `pd sink` push/status, hook crash-safety | 16 | 16/16 ✅ |
 
-**Total: 56 cases · 55 match intent · 0 security-critical divergences.** The three
+**Total: 59 cases · 58 match intent · 0 security-critical divergences.** The three
 never-downgrade guarantees hold (sensitive paths, catastrophic commands, and denied calls
 all stay `critical` even with a matching allow-rule). Every tamper/truncation/reorder/insert
 was detected (exit 2); gzip compaction is provably lossless (byte-identical report before/after);
