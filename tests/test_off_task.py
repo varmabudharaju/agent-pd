@@ -10,7 +10,7 @@ def _rec(actions, brief):
 def test_bash_grep_offtask_flagged():
     # agents often search via shell grep, not the Grep tool — off_task must see it.
     rec = _rec([Action(agent_id="a1", tool_name="Bash",
-                       tool_input={"command": 'grep -r "kubernetes" /Users/varma/agent-pd'})],
+                       tool_input={"command": 'grep -r "kubernetes" /home/dev/agent-pd'})],
                brief="find the version string")
     offs = off_task.detect(rec, RULES)
     assert len(offs) == 1 and offs[0].offense == "off_task"
@@ -30,7 +30,7 @@ def test_bash_non_search_command_ignored():
 def test_bash_grep_extracts_term_not_whole_command():
     # The on-brief grep term must win even when paths/flags would dilute the overlap.
     rec = _rec([Action(agent_id="a1", tool_name="Bash",
-                       tool_input={"command": 'grep -rn "\\.claude" /Users/varma/agent-pd/agent_pd/ --include=*.py'})],
+                       tool_input={"command": 'grep -rn "\\.claude" /home/dev/agent-pd/agent_pd/ --include=*.py'})],
                brief="Find .claude filesystem access")
     assert off_task.detect(rec, RULES) == []   # term ".claude" overlaps brief -> not off-task
 

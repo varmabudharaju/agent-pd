@@ -1,21 +1,37 @@
-# agent-pd
+<div align="center">
 
-**A police department for your Claude Code agents.** A logging-only hook records every
-tool and permission event from the main agent *and* its subagents; the `pd` CLI replays
-that log through a set of detectors and reports rule offenses with quoted evidence.
+# 🚔 agent-pd
 
-**Catch-and-report only — the hook never blocks an agent.** Think flight recorder + police
-scanner, not a firewall. If you need to *stop* an action, that stays with Claude Code's own
-permission prompts or an OS sandbox. agent-pd tells you what happened, faithfully, after the
-fact (or live as it happens).
+### A police department for your Claude Code agents
 
-- **Repo:** https://github.com/varmabudharaju/agent-pd
-- **Status:** v0.1.0 · Python ≥3.11 · 438 tests passing · zero runtime deps (PyYAML only)
-- **Covers main + every subagent**, including those spawned by Claude Code's new dynamic
-  **Workflow** tool (verified against recorded `workflow-subagent` hook events). The one
-  caveat: Workflow subagents carry no brief, so only the heuristic `off_task` detector can't
-  run on them — every deterministic detector still does.
-- **Honest by design:** it raises the bar; it is **not** a sandbox. See [SECURITY.md](SECURITY.md).
+A logging-only hook records every tool &amp; permission event from the main agent **and** its
+subagents; the `pd` CLI replays that log through six detectors and reports rule offenses with
+quoted evidence. **Catch-and-report — it never blocks.**
+
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+[![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB.svg?logo=python&logoColor=white)](pyproject.toml)
+[![Tests](https://img.shields.io/badge/tests-438_passing-brightgreen.svg)](docs/manual-tests/)
+[![Version](https://img.shields.io/badge/version-0.1.0-orange.svg)](pyproject.toml)
+[![Runtime deps](https://img.shields.io/badge/runtime_deps-PyYAML_only-lightgrey.svg)](pyproject.toml)
+
+**[Quickstart](#quickstart)** · **[How it works](#how-it-works-mental-model)** · **[Detectors](#the-detectors)** · **[Architecture](ARCHITECTURE.md)** · **[Security](SECURITY.md)**
+
+</div>
+
+![capture vs. read](docs/diagrams/02-two-phase-flow.png)
+
+> **Flight recorder + police scanner, not a firewall.** If you need to *stop* an action, that
+> stays with Claude Code's permission prompts or an OS sandbox. agent-pd tells you what an agent
+> did — faithfully, after the fact or live as it happens.
+
+**Highlights**
+
+- 🛰️ **Covers the main agent + every subagent**, including those spawned by Claude Code's new
+  dynamic **Workflow** tool (verified against recorded `workflow-subagent` hook events).
+- 🎯 **Six deterministic detectors** at **zero token cost** — denied calls, out-of-scope &amp;
+  credential access, permission bypass, self-permissioning, disallowed tools, off-task work.
+- 🔒 **Tamper-evident audit log** (hash-chained) with an optional **off-host append-only sink**.
+- 🙂 **Honest by design** — it raises the bar; it is **not** a sandbox. See [SECURITY.md](SECURITY.md).
 
 ---
 
@@ -38,6 +54,10 @@ use a tool it wasn't allowed, or wander off its brief?*
       │                    │                                   pd watch    (live scanner)
  settings.json       ~/.claude/pd/audit/<session>.jsonl        pd judge    (opt-in LLM pass)
 ```
+
+<p align="center">
+  <img src="docs/diagrams/01-system-context.png" width="560" alt="agent-pd system context">
+</p>
 
 > For the full picture — system context, component, sequence, detector-pipeline, and
 > integrity diagrams (with rendered images) — see [ARCHITECTURE.md](ARCHITECTURE.md).

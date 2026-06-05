@@ -71,10 +71,10 @@ drive the functions directly with an explicit `audit_dir`.
 its real path or in-project files wrongly look out-of-scope.
 
 Define this helper once in your shell (run from the repo root
-`/Users/varma/agent-pd`):
+`/path/to/agent-pd`):
 
 ```bash
-cd /Users/varma/agent-pd
+cd /path/to/agent-pd
 BASE="$(cd "${TMPDIR:-/tmp}" && pwd -P)/pd-mt"
 
 run() {                       # run CASEID SID  ; python event-list on stdin
