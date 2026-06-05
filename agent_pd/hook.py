@@ -4,6 +4,7 @@
 # Transcript schema confirmed in spec. Hook payload field names are read defensively
 # (camelCase + snake_case fallbacks) since they are not yet confirmed against a live run.
 import json
+import os
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -17,6 +18,29 @@ except Exception:  # pragma: no cover - platform dependent
     fcntl = None
 
 DEFAULT_AUDIT_DIR = Path.home() / ".claude" / "pd" / "audit"
+
+
+def resolve_audit_dir(cli_arg=None) -> Path:
+    """Where to write the audit log. Precedence: explicit arg (baked by `pd
+    install-hook --audit-dir`) > the PD_AUDIT_DIR env var > the default under
+    ~/.claude. Lets the user keep logs somewhere they choose without losing the
+    safe default."""
+    if cli_arg:
+        return Path(cli_arg).expanduser()
+    env = os.environ.get("PD_AUDIT_DIR")
+    if env:
+        return Path(env).expanduser()
+    return DEFAULT_AUDIT_DIR
+
+
+def _audit_dir_from_argv(argv) -> str:
+    """Minimal `--audit-dir VALUE` scan (no argparse — the hook stays light and
+    must never raise on unexpected args)."""
+    if argv and "--audit-dir" in argv:
+        i = argv.index("--audit-dir")
+        if i + 1 < len(argv):
+            return argv[i + 1]
+    return None
 
 
 def _first(payload, *keys, default=None):
@@ -172,12 +196,13 @@ def write_event(event: dict, audit_dir: Path = None) -> None:
 def main() -> int:
     # Crash-safe: any error is swallowed so the agent run is never affected.
     try:
+        audit_dir = resolve_audit_dir(_audit_dir_from_argv(sys.argv[1:]))
         raw = sys.stdin.read()
         payload = json.loads(raw) if raw.strip() else {}
         event = build_event(payload)
         if not event.get("ts"):   # payload timestamp is often absent; stamp arrival time
             event["ts"] = datetime.now().isoformat(timespec="seconds")
-        write_event(event)
+        write_event(event, audit_dir=audit_dir)
     except Exception as e:
         # stderr is not captured by CC and won't affect the run — surface for debugging.
         sys.stderr.write(f"agent-pd hook error: {e}\n")

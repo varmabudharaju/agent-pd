@@ -15,6 +15,38 @@ from agent_pd.integrity import (
     read_head,
 )
 
+def test_resolve_audit_dir_precedence(tmp_path, monkeypatch):
+    # precedence: explicit arg > PD_AUDIT_DIR env > built-in default
+    monkeypatch.delenv("PD_AUDIT_DIR", raising=False)
+    assert hook.resolve_audit_dir() == hook.DEFAULT_AUDIT_DIR
+    monkeypatch.setenv("PD_AUDIT_DIR", str(tmp_path / "envdir"))
+    assert hook.resolve_audit_dir() == (tmp_path / "envdir")
+    assert hook.resolve_audit_dir(str(tmp_path / "argdir")) == (tmp_path / "argdir")
+
+
+def test_hook_main_honors_pd_audit_dir_env(tmp_path, monkeypatch):
+    import io
+    monkeypatch.setenv("PD_AUDIT_DIR", str(tmp_path / "logs"))
+    monkeypatch.setattr("sys.argv", ["agent_pd.hook"])
+    monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(
+        {"hook_event_name": "PostToolUse", "session_id": "E",
+         "tool_name": "Bash", "tool_input": {"command": "ls"}})))
+    assert main() == 0
+    assert (tmp_path / "logs" / "E.jsonl").exists()
+
+
+def test_hook_main_audit_dir_arg_beats_env(tmp_path, monkeypatch):
+    import io
+    monkeypatch.setenv("PD_AUDIT_DIR", str(tmp_path / "envdir"))
+    monkeypatch.setattr("sys.argv", ["agent_pd.hook", "--audit-dir", str(tmp_path / "argdir")])
+    monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(
+        {"hook_event_name": "PostToolUse", "session_id": "E",
+         "tool_name": "Bash", "tool_input": {"command": "ls"}})))
+    assert main() == 0
+    assert (tmp_path / "argdir" / "E.jsonl").exists()
+    assert not (tmp_path / "envdir" / "E.jsonl").exists()
+
+
 def test_build_event_normalizes_fields():
     payload = {
         "hook_event_name": "PostToolUse",

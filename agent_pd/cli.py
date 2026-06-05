@@ -6,7 +6,7 @@ from .config import load_rules
 from .investigator import gather, _latest_session, DEFAULT_PROJECTS_DIR, DEFAULT_AUDIT_DIR
 from .detectors import run_detectors
 from .report import render_json, render_markdown
-from .hook import DEFAULT_AUDIT_DIR as HOOK_AUDIT_DIR
+from .hook import DEFAULT_AUDIT_DIR as HOOK_AUDIT_DIR, resolve_audit_dir
 from . import store
 from . import integrity
 from . import sink
@@ -40,8 +40,10 @@ def _cmd_list(args) -> int:
 
 def _cmd_install_hook(args) -> int:
     from .install_hook import install_hook
-    install_hook(Path(args.settings))
-    print(f"Patrol hook installed in {args.settings}")
+    audit_dir = getattr(args, "audit_dir", None)
+    install_hook(Path(args.settings), audit_dir=audit_dir)
+    where = f" (logging to {audit_dir})" if audit_dir else ""
+    print(f"Patrol hook installed in {args.settings}{where}")
     return 0
 
 
@@ -251,6 +253,9 @@ def _cmd_sink_status(args) -> int:
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="pd", description="Police department for Claude Code subagents")
     sub = p.add_subparsers(dest="cmd", required=True)
+    # Read commands default to the same place the hook writes: PD_AUDIT_DIR if set,
+    # else ~/.claude/pd/audit. So `pd report` finds the logs without --audit-dir.
+    DEFAULT_AUDIT_DIR = resolve_audit_dir()
 
     r = sub.add_parser("report", help="produce an offense report for a session")
     r.add_argument("--session", default=None)
@@ -271,6 +276,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     h = sub.add_parser("install-hook", help="register the patrol hook in settings.json")
     h.add_argument("--settings", default=str(Path.home() / ".claude" / "settings.json"))
+    h.add_argument("--audit-dir", default=None,
+                   help="write audit logs here instead of ~/.claude/pd/audit "
+                        "(baked into the hook command; or set PD_AUDIT_DIR)")
     h.set_defaults(func=_cmd_install_hook)
 
     w = sub.add_parser("watch", help="live 'police scanner' feed of agent activity")
