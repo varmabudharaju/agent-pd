@@ -331,11 +331,10 @@ pip install --user -e ".[judge]" # + anthropic SDK (only for the API judge backe
 python3 -m pytest -q             # 438 tests, pure (no API key needed)
 ```
 
-TDD throughout; detectors, render, live, and judge are all unit-tested with no network. Design
-specs and the original implementation plan are under `docs/superpowers/`. For the design in
-depth: [SYSTEM-DESIGN.md](SYSTEM-DESIGN.md) (formal design doc — goals, components, permission
-model, trade-offs), [ARCHITECTURE.md](ARCHITECTURE.md) (diagrams), and [HANDOFF.md](HANDOFF.md)
-(detector internals).
+TDD throughout; detectors, render, live, and judge are all unit-tested with no network. For the
+design in depth: [SYSTEM-DESIGN.md](SYSTEM-DESIGN.md) (formal design doc — goals, components,
+permission model, trade-offs) and [ARCHITECTURE.md](ARCHITECTURE.md) (diagrams). Honest
+limitations and roadmap live in [KNOWN-GAPS.md](KNOWN-GAPS.md).
 
 ## License
 
