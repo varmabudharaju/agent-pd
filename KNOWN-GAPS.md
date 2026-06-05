@@ -92,7 +92,7 @@ where a real crime could slip past as `info` or go uncounted. Tests 155 → 347.
 - **Bash `extract_paths` env-prefix / pipe handling** — `scope.extract_paths` now skips
   env-assignment prefixes (`FOO=bar cat /x`) and handles pipe segments, so the real
   path-bearing command past a `|` is scanned.
-- **NEW detectors** (now exist; see HANDOFF detector table):
+- **NEW detectors** (now exist; see the detector table in `SYSTEM-DESIGN.md` / `README.md`):
   - `self_permission` (critical) — flags a `Write`/`Edit`/`Bash` that writes a permission
     key into a `.claude/settings*.json` file (an agent widening its own permissions).
   - `tool_not_allowed` (high) — flags a subagent using a tool outside its declared

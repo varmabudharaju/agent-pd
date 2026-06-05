@@ -2,8 +2,8 @@
 
 **Status:** v0.1.0 · **Audience:** engineers evaluating, extending, or auditing agent-pd.
 **Companion docs:** [`ARCHITECTURE.md`](ARCHITECTURE.md) (diagram-first walkthrough +
-rendered images), [`SECURITY.md`](SECURITY.md) (threat model), [`HANDOFF.md`](HANDOFF.md)
-(detector internals), [`KNOWN-GAPS.md`](KNOWN-GAPS.md) (ledger).
+rendered images), [`SECURITY.md`](SECURITY.md) (threat model), [`KNOWN-GAPS.md`](KNOWN-GAPS.md)
+(limitations & roadmap ledger).
 
 This is the prose system-design document: what agent-pd is, the requirements it meets, how
 it is structured, the decisions behind it, and where it stops.

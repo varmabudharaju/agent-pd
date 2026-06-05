@@ -449,5 +449,6 @@ treat it like any sensitive local file (see `SECURITY.md` → Privacy).
    sessions losslessly; `pd sink push` forwards events off-host so they can't be quietly
    deleted later.
 
-For the threat model and honest limitations, read `SECURITY.md`. For the detector internals
-and invariants, read `HANDOFF.md`. To see it run end-to-end, `bash examples/demo.sh`.
+For the threat model and honest limitations, read `SECURITY.md`. For the formal design (goals,
+components, permission model, trade-offs), read `SYSTEM-DESIGN.md`. To see it run end-to-end,
+`bash examples/demo.sh`.
