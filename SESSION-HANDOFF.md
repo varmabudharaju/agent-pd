@@ -1,7 +1,11 @@
 # Session handoff — agent-pd
 
 **Prepared:** 2026-06-03 (updated 2026-06-04) · **Repo:** `/Users/varma/agent-pd` (GitHub `varmabudharaju/agent-pd`, `master`)
-**State:** `master` @ `c5a55c4` · **112 commits** · **435 tests passing** · 6 detectors · tree clean.
+**State:** `master` · **438 tests passing** · 6 detectors · tree clean.
+> Note: this is an internal point-in-time handoff. The "Session history" below covers PRs
+> #4–#11; later docs/fixes (PRs #13–#19: README/architecture/system-design docs, manual-test
+> suite, the `.env` credential-detection and camelCase-event fixes) are not re-summarized here.
+> For current state see `README.md`, `SYSTEM-DESIGN.md`, and `KNOWN-GAPS.md`.
 
 agent-pd is a **catch-and-report watchdog** for Claude Code agent activity (main + subagents): it
 records every tool call via a hook, then flags misbehavior (out-of-scope/sensitive access,
@@ -71,7 +75,7 @@ permission_bypass, out_of_scope, redundant, off_task, self_permission, tool_scop
 ## Hand-test recipes
 
 ```bash
-python3 -m pytest -q                                   # 435 passing
+python3 -m pytest -q                                   # 438 passing
 python3 -c "from agent_pd.detectors import DETECTORS; print(list(DETECTORS))"   # 6
 python3 -m agent_pd.cli report --format md | head -40
 python3 -m agent_pd.cli compact --dry-run              # then drop --dry-run

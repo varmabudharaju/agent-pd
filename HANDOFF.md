@@ -6,7 +6,7 @@ tool/permission event; a CLI audits those logs and reports rule offenses with ev
 
 - **Repo:** https://github.com/varmabudharaju/agent-pd (branch `master`)
 - **Local:** `/Users/varma/agent-pd` · Python 3.11 (use `python3`) · CLI: `pd`
-- **State at handoff:** 434 tests passing, working tree clean, all pushed.
+- **State at handoff:** 438 tests passing, working tree clean, all pushed.
 - **Audit-log integrity landed** (`feat/audit-integrity`): events are hash-chained
   (`seq` + `chain = sha256(prev_chain + canonical(event))`, HMAC-SHA256 if `PD_AUDIT_KEY`
   is set), computed by the hook under a per-session file lock with a `<sid>.head.json`
@@ -150,7 +150,7 @@ agent_pd/
   install_hook.py   # idempotent settings.json hook registration
   store.py          # gzip-only audit compaction + transparent .jsonl/.jsonl.gz reading (iter_events, compact_session/compact_all/compact_targets, prune_sessions)
   cli.py            # argparse: report/list/install-hook/watch/judge/compact/verify/sink
-tests/              # 434 tests, pure (no API key needed — judge uses injected fake clients)
+tests/              # 438 tests, pure (no API key needed — judge uses injected fake clients)
 pd-rules.yaml       # user-editable rules
 docs/superpowers/   # specs + the original implementation plan
 ```
@@ -161,7 +161,7 @@ docs/superpowers/   # specs + the original implementation plan
 cd ~/agent-pd
 pip install --user -e .          # core (zero runtime deps but PyYAML)
 pip install --user -e ".[judge]" # + anthropic SDK (only for the API judge backend)
-python3 -m pytest -q             # 434 tests
+python3 -m pytest -q             # 438 tests
 ```
 
 TDD throughout; detectors/render/live/judge are all unit-tested with no network.
@@ -178,11 +178,13 @@ TDD throughout; detectors/render/live/judge are all unit-tested with no network.
   results would risk bloating the audit log — deliberately left out.
 - **`off_task` is inherently noisy** (word-overlap). The judge is the real fix; the
   detector is hard-labeled low-confidence "review" and never critical.
-- **`PermissionDenied` decision** is now inferred from the event name (the hook sets
+- **`PermissionDenied` decision** is inferred from the event name (the hook sets
   `decision="deny"` for `PermissionDenied`), so denied calls are captured and flagged
-  critical — no longer broken. The exact live payload *field names* still weren't
-  confirmed against a real denial (see `NOTES.md`); `hook.py` reads fields defensively
-  (camelCase + snake_case), so this refines but doesn't block.
+  critical. The live payload field names are now **validated against a real recorded
+  denial** (`tests/test_hook.py::test_build_event_real_recorded_denial_shape`): the live
+  reason field is `reason`, and `hook.py` reads the event name and all fields defensively
+  in both snake_case and camelCase (the camelCase event-name path was fixed so a camelCase
+  denial can't slip through as an unrecognized event).
 - **Sessions that predate the hook won't appear in `pd report`.** `gather()` reads only
   the audit log (single source of truth covering main + subagents), so a session with no
   `~/.claude/pd/audit/<session>.jsonl` is invisible to `pd report`. Intended tradeoff.
@@ -197,17 +199,19 @@ TDD throughout; detectors/render/live/judge are all unit-tested with no network.
 - ✅ **Off-host audit-log sink — DONE** (`feat/audit-sink`; `pd sink push`/`status`,
   `agent_pd/sink.py`). See the bullet at the top and SECURITY.md.
 
+- ✅ **Real `PermissionDenied` payload validated** — confirmed against a recorded denial
+  (`tests/test_hook.py::test_build_event_real_recorded_denial_shape`); the live reason field
+  is `reason`, and the event name is read in both snake_case and camelCase.
+
 Remaining, in rough priority:
 
-1. **Validate the real `PermissionDenied` / `tool_result` payload** against a live denial —
-   confirm the exact field names the hook reads (still inferred defensively; see `NOTES.md`).
-2. **Optional chunking of large sink batches** — `push_session` currently sends all pending
+1. **Optional chunking of large sink batches** — `push_session` currently sends all pending
    events in one request; very large backlogs (or http body limits) may want batching.
-3. **A syslog sink backend** — alongside file/http, for shops that aggregate via syslog.
-4. **Capture tool results/outcomes in the hook** (success/failure, output size) → richer
+2. **A syslog sink backend** — alongside file/http, for shops that aggregate via syslog.
+3. **Capture tool results/outcomes in the hook** (success/failure, output size) → richer
    feed showing what each action *did*. Watch audit-log size.
-5. **`pd summary <session>`** — per-agent digest (files touched, time span, tool histogram).
-6. **Verdict disk cache for the judge** — skip re-judging identical (brief, search) pairs.
+4. **`pd summary <session>`** — per-agent digest (files touched, time span, tool histogram).
+5. **Verdict disk cache for the judge** — skip re-judging identical (brief, search) pairs.
 
 ## Storage layout
 
