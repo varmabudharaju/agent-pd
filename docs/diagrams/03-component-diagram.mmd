@@ -1,0 +1,49 @@
+flowchart TD
+    CLI["cli.py<br/>argparse dispatch"]
+
+    subgraph WRITE["Write path"]
+        HOOK["hook.py<br/>recorder"]
+        INTEG["integrity.py<br/>hash-chain + head + lock"]
+        INSTALL["install_hook.py<br/>register in settings.json"]
+    end
+
+    subgraph READMODELS["Read path"]
+        STORE["store.py<br/>iter_events · compact · gz"]
+        INVEST["investigator.py<br/>gather()"]
+        LIVE["live.py<br/>LiveMonitor · watch()"]
+        REPORT["report.py<br/>render_json / render_markdown"]
+        RENDER["render.py<br/>live feed formatting"]
+        SUMMARY["summary.py<br/>labels / digests"]
+    end
+
+    subgraph DETECTORS["detectors/ (6)"]
+        D1["permission_bypass"]
+        D2["out_of_scope"]
+        D3["self_permission"]
+        D4["tool_scope<br/>(tool_not_allowed)"]
+        D5["redundant"]
+        D6["off_task"]
+    end
+
+    subgraph SHARED["Shared logic"]
+        SCOPE["scope.py<br/>path extraction/classify"]
+        PERM["permissions.py<br/>allow-rule matching"]
+        AGENTS["agents_def.py<br/>subagent tool allowlists"]
+        CONFIG["config.py<br/>rules + sensitive set"]
+        MODELS["models.py<br/>Action · AgentRecord · Offense"]
+    end
+
+    JUDGE["judge.py<br/>opt-in off_task LLM"]
+    SINK["sink.py<br/>off-host forwarder"]
+
+    HOOK --> INTEG
+    CLI --> HOOK & STORE & INVEST & LIVE & REPORT & JUDGE & SINK & INSTALL & INTEG
+    INVEST --> STORE & LIVE
+    LIVE --> DETECTORS & PERM & AGENTS & SUMMARY
+    REPORT --> DETECTORS & SUMMARY
+    D2 --> SCOPE & PERM
+    D1 --> PERM
+    D3 --> SCOPE
+    D4 --> AGENTS
+    DETECTORS --> MODELS & CONFIG
+    SINK --> INTEG

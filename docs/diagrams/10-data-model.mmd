@@ -1,0 +1,30 @@
+classDiagram
+    class Action {
+        +str agent_id
+        +str tool_name
+        +dict tool_input
+        +str ts
+        +str decision  // allow | deny | None
+        +str reason
+        +object tool_result
+    }
+    class AgentRecord {
+        +str agent_id
+        +str agent_type   // "main" for the main agent
+        +str brief        // from meta.json (subagents only)
+        +str cwd
+        +list~Action~ actions
+        +list allow_rules     // permissions.allow (for info-downgrade)
+        +set tool_allowlist   // declared tools, or None = unrestricted
+    }
+    class Offense {
+        +str agent_id
+        +str agent_type
+        +str offense      // detector name
+        +str severity     // critical | high | low | review | info
+        +str confidence
+        +str evidence     // quoted proof
+        +str subject
+    }
+    AgentRecord "1" o-- "many" Action : actions
+    AgentRecord ..> Offense : detectors emit

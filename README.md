@@ -39,6 +39,9 @@ use a tool it wasn't allowed, or wander off its brief?*
  settings.json       ~/.claude/pd/audit/<session>.jsonl        pd judge    (opt-in LLM pass)
 ```
 
+> For the full picture — system context, component, sequence, detector-pipeline, and
+> integrity diagrams (with rendered images) — see [ARCHITECTURE.md](ARCHITECTURE.md).
+
 - **The hook is a dumb, crash-safe recorder.** Registered globally in `~/.claude/settings.json`
   on PostToolUse / PermissionDenied / SubagentStart / SubagentStop. On each event it appends one
   normalized, hash-chained line to a **per-session** audit file and **always exits 0** — it never

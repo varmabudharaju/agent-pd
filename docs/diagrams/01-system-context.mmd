@@ -1,0 +1,33 @@
+flowchart TB
+    subgraph CC["Claude Code (main agent + subagents)"]
+        TOOL["Every tool call<br/>(Bash, Read, Write, Edit, Task, …)"]
+    end
+
+    HOOK["pd hook<br/>(agent_pd/hook.py)<br/>logging-only · always exit 0"]
+    LOG[("Audit log<br/>~/.claude/pd/audit/&lt;sid&gt;.jsonl<br/>hash-chained, one file per session")]
+
+    subgraph PD["pd CLI (agent_pd/cli.py)"]
+        REPORT["pd report<br/>(forensic)"]
+        WATCH["pd watch<br/>(live scanner)"]
+        VERIFY["pd verify<br/>(tamper check)"]
+        COMPACT["pd compact<br/>(gzip old logs)"]
+        SINK["pd sink<br/>(off-host copy)"]
+        JUDGE["pd judge<br/>(opt-in LLM)"]
+    end
+
+    USER(["You (terminal)"])
+    OFFHOST[("Off-host sink<br/>file / http (append-only)")]
+    LLM["Anthropic API or<br/>claude CLI (subscription)"]
+
+    TOOL -- "PostToolUse / PermissionDenied /<br/>SubagentStart / SubagentStop" --> HOOK
+    HOOK -- "append one normalized,<br/>chained event" --> LOG
+    LOG --> REPORT & WATCH & VERIFY & COMPACT & SINK & JUDGE
+    REPORT & WATCH & VERIFY --> USER
+    SINK -- "forward un-sent events" --> OFFHOST
+    JUDGE -- "confirm off_task flags" --> LLM
+    LLM --> JUDGE
+
+    classDef hook fill:#ffe9c7,stroke:#b06f00;
+    classDef store fill:#d7ecff,stroke:#1769aa;
+    class HOOK hook
+    class LOG,OFFHOST store
