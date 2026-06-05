@@ -28,7 +28,8 @@ def detect(record, rules) -> list:
                 raw_paths.append(p)
             tool_label = a.tool_name
         elif a.tool_name == "Bash":
-            raw_paths = scopelib.extract_paths(str((a.tool_input or {}).get("command", "")))
+            raw_paths = scopelib.extract_paths(str((a.tool_input or {}).get("command", "")),
+                                               sensitive_patterns=rules.sensitive_patterns)
             tool_label = "Bash"
         else:
             continue

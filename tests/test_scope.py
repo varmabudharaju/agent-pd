@@ -92,6 +92,22 @@ def test_extract_paths_env_prefix_and_pipes():
     assert scope.extract_paths("echo x | cat secret") == ["secret"]
 
 
+def test_extract_paths_bare_sensitive_token_non_path_command():
+    # A bare relative filename handed to a command NOT in PATH_COMMANDS (grep, base64,
+    # tar...) was invisible -- so `grep KEY .env` leaked credentials past out_of_scope.
+    # When sensitive_patterns are supplied, a bare token whose basename matches one is
+    # extracted regardless of the command or its argument position.
+    pats = [".env", ".env.*", "*.pem", "id_rsa"]
+    assert ".env" in scope.extract_paths("grep KEY .env", sensitive_patterns=pats)
+    assert ".env" in scope.extract_paths("base64 .env", sensitive_patterns=pats)
+    assert ".env.production" in scope.extract_paths(
+        "tar czf out.tgz .env.production", sensitive_patterns=pats)
+    # Non-sensitive bare tokens stay ignored (no over-broad emission for grep's pattern arg).
+    assert scope.extract_paths("grep KEY data.txt", sensitive_patterns=pats) == []
+    # Backward-compatible: without sensitive_patterns the bare token is still not emitted.
+    assert scope.extract_paths("grep KEY .env") == []
+
+
 # --- Evasion 1: interpreter -c/-e one-liners hide the real file access ---
 
 def test_extract_paths_interpreter_bash_c():

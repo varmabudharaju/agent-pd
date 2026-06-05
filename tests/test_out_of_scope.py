@@ -37,6 +37,18 @@ def test_sensitive_flagged_even_inside_project():
     assert "sensitive" in offs[0].evidence
 
 
+def test_bash_grep_of_dotenv_flagged_sensitive():
+    # `grep KEY .env` -- a bare relative credential file passed to a non-PATH_COMMAND --
+    # must still be flagged critical/sensitive, not slip through.
+    rules = load_rules(None)
+    rec = _rec([Action(agent_id="a1", tool_name="Bash",
+                       tool_input={"command": "grep KEY .env"})])
+    offs = out_of_scope.detect(rec, rules)
+    assert len(offs) == 1
+    assert offs[0].severity == "critical"
+    assert "sensitive" in offs[0].evidence
+
+
 def test_allowlist_narrows_within_project():
     rules = replace(load_rules(None), scope_dirs=["src/"])
     rec = _rec([Action(agent_id="a1", tool_name="Write",
