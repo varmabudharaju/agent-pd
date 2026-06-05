@@ -326,6 +326,19 @@ it like any sensitive local file. `pd compact` gzips, it does **not** encrypt. N
 unless you configure a sink. To clear it: `rm ~/.claude/pd/audit/*.jsonl` (it repopulates as
 sessions run).
 
+**Choosing where logs go.** The default is deliberately a hidden, local, non-repo path. To put
+logs somewhere you choose, set `PD_AUDIT_DIR`, or bake it into the hook at install time:
+
+```bash
+pd install-hook --audit-dir ~/agent-pd-logs   # hook + CLI both use this path
+# or, per shell: export PD_AUDIT_DIR=~/agent-pd-logs
+```
+
+Both the hook (writes) and every `pd` command (reads) honor `PD_AUDIT_DIR` (precedence:
+`--audit-dir` flag › `PD_AUDIT_DIR` › default). **Don't** point it at a repo folder or a
+cloud-synced directory (iCloud/Dropbox) unless you accept that plaintext tool inputs — possibly
+secrets — will be committed or synced off-machine.
+
 ## Development
 
 ```bash

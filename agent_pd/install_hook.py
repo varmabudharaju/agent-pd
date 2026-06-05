@@ -1,4 +1,5 @@
 import json
+import shlex
 import sys
 from pathlib import Path
 
@@ -6,12 +7,18 @@ HOOK_COMMAND = f"{sys.executable} -m agent_pd.hook"
 HOOK_EVENTS = ["PostToolUse", "PermissionDenied", "SubagentStart", "SubagentStop"]
 
 
-def _entry():
-    return {"hooks": [{"type": "command", "command": HOOK_COMMAND}]}
+def hook_command(audit_dir=None) -> str:
+    """The command registered in settings.json. With audit_dir, bake `--audit-dir
+    PATH` in so the hook writes there regardless of the user's shell environment."""
+    cmd = HOOK_COMMAND
+    if audit_dir:
+        cmd += " --audit-dir " + shlex.quote(str(Path(audit_dir).expanduser()))
+    return cmd
 
 
-def install_hook(settings_path: Path) -> None:
+def install_hook(settings_path: Path, audit_dir=None) -> None:
     settings_path = Path(settings_path)
+    command = hook_command(audit_dir)
     cfg = {}
     if settings_path.exists() and settings_path.read_text().strip():
         cfg = json.loads(settings_path.read_text())
@@ -19,6 +26,6 @@ def install_hook(settings_path: Path) -> None:
     for event in HOOK_EVENTS:
         entries = hooks.setdefault(event, [])
         existing = [h["command"] for e in entries for h in e.get("hooks", [])]
-        if HOOK_COMMAND not in existing:
-            entries.append(_entry())
+        if command not in existing:
+            entries.append({"hooks": [{"type": "command", "command": command}]})
     settings_path.write_text(json.dumps(cfg, indent=2) + "\n")
