@@ -20,7 +20,7 @@ action, that has to happen elsewhere (Claude Code's own permission prompts, an O
 | What | Detector | Trust |
 |---|---|---|
 | File access outside the project, incl. via Bash, interpreter one-liners (`bash -c`, `python -c`, `node -e`), single-level `$VAR`, and best-effort symlinks | `out_of_scope` | deterministic |
-| Access to sensitive paths (`~/.ssh`, `~/.aws`, `~/.claude` incl. the audit dir, `/etc/shadow`, `/etc/passwd`, `/etc/sudoers`, `/etc/ssh`, `/root`, shell history…) | `out_of_scope` (critical) | deterministic |
+| Access to sensitive paths (`~/.ssh`, `~/.aws`, `~/.claude` incl. the audit dir, `/etc/shadow`, `/etc/passwd`, `/etc/sudoers`, `/etc/ssh`, `/root`, shell history…) **and credential files by name** (`.env`, `.env.*`, `*.pem`, `*.key`, `id_rsa`, `.netrc`, `.git-credentials`, …) — matched by basename for **any** Bash command, so `grep KEY .env` / `base64 .env` / `tar … .env` are caught, not just `cat`/`head` | `out_of_scope` (critical) | deterministic |
 | Permission-bypass / dangerous commands, two-tier (see below) + denied calls | `permission_bypass` | deterministic |
 | An agent modifying **its own control files** — `.claude/settings*.json`, `.claude/agents/*.md`, `pd-rules*.yaml` — via any method (Write/Edit/NotebookEdit, or Bash cp/mv/tee/sed/python/base64/redirect), regardless of content | `self_permission` | deterministic |
 | A subagent using a tool outside its declared `tools:` allowlist | `tool_not_allowed` | deterministic |
@@ -49,7 +49,9 @@ Two categories are **never** downgraded, no matter what allow-rule you write:
   `rm -rf ~`/`$HOME`, `--no-preserve-root`, fork bombs, `dd of=/dev/…`, `mkfs`, `curl | sh`.
 
 A denied call (`PermissionDenied`) always stays critical — a denial is unpermitted by
-definition.
+definition. The denial is inferred from the event name, which the hook reads in both
+snake_case (`hook_event_name`) and camelCase (`hookEventName`), so a denied call cannot
+slip through as an unrecognized event and go unflagged.
 
 ## Known limitations (read this)
 
