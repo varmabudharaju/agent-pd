@@ -138,6 +138,9 @@ outside the project — plus a subagent (`Researcher`) using `Bash`, a tool outs
 declared read-only allowlist. That's five of the six detectors firing on one synthetic
 session. See [`examples/demo.sh`](examples/demo.sh) for the exact events.
 
+> **Want to verify it on your own real Claude Code session?** Follow the safe ~15-minute
+> hands-on walkthrough in [`docs/manual-tests/TRY-IT-LIVE.md`](docs/manual-tests/TRY-IT-LIVE.md).
+
 ---
 
 ## Commands
