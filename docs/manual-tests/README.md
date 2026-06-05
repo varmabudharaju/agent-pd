@@ -8,6 +8,9 @@ running `python3 -m agent_pd.cli` — nothing is hand-written.
 
 Run from the repo root with `python3` and an editable install (`pip install --user -e .`).
 
+> **Want to see it catch a *real* Claude Code session** (not injected events)? Follow
+> [`TRY-IT-LIVE.md`](TRY-IT-LIVE.md) — a safe ~15-minute hands-on walkthrough.
+
 ## The four suites
 
 | File | Area | Cases | Result |
