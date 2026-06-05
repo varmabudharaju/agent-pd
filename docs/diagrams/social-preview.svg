@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640" font-family="Helvetica Neue, Helvetica, Arial, sans-serif">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0b1220"/>
+      <stop offset="1" stop-color="#131d33"/>
+    </linearGradient>
+  </defs>
+
+  <!-- background -->
+  <rect width="1280" height="640" fill="url(#bg)"/>
+
+  <!-- police-light top stripe (blue | red) -->
+  <rect x="0" y="0" width="640" height="8" fill="#2f81f7"/>
+  <rect x="640" y="0" width="640" height="8" fill="#f85149"/>
+
+  <!-- left accent bar -->
+  <rect x="96" y="150" width="6" height="200" rx="3" fill="#2f81f7"/>
+
+  <!-- title -->
+  <text x="128" y="210" fill="#ffffff" font-size="104" font-weight="800" letter-spacing="-2">agent-pd</text>
+
+  <!-- tagline -->
+  <text x="130" y="268" fill="#9fb3c8" font-size="36" font-weight="500">A police department for your Claude Code agents</text>
+
+  <!-- feature rows -->
+  <g font-size="27" fill="#c7d5e6">
+    <circle cx="142" cy="332" r="6" fill="#3fb950"/>
+    <text x="166" y="341">Records every tool call from the main agent <tspan fill="#ffffff" font-weight="700">and every subagent</tspan></text>
+
+    <circle cx="142" cy="380" r="6" fill="#d29922"/>
+    <text x="166" y="389">Six deterministic detectors — permission bypass, credential access, off-task…</text>
+
+    <circle cx="142" cy="428" r="6" fill="#f85149"/>
+    <text x="166" y="437">Tamper-evident audit log · <tspan fill="#ffffff" font-weight="700">catch-and-report, never blocks</tspan></text>
+  </g>
+
+  <!-- footer divider -->
+  <rect x="96" y="520" width="1088" height="2" fill="#21304d"/>
+
+  <!-- footer text -->
+  <text x="96" y="566" fill="#7d8fa6" font-size="26" font-weight="600">github.com/varmabudharaju/agent-pd</text>
+  <text x="1184" y="566" text-anchor="end" fill="#7d8fa6" font-size="24">Apache-2.0 · Python 3.11+ · 438 tests · zero deps</text>
+</svg>
