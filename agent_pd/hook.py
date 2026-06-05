@@ -31,7 +31,7 @@ def _first(payload, *keys, default=None):
 # new/unknown CC fields.
 _CONSUMED_KEYS = {
     "timestamp", "ts",
-    "hook_event_name", "event",
+    "hook_event_name", "hookEventName", "event",
     "session_id", "sessionId",
     "agent_id", "agentId",
     "agent_type", "agentType",
@@ -49,7 +49,8 @@ _CONSUMED_KEYS = {
 def build_event(payload: dict) -> dict:
     event = {
         "ts": _first(payload, "timestamp", "ts"),
-        "event": _first(payload, "hook_event_name", "event", default="unknown"),
+        "event": _first(payload, "hook_event_name", "hookEventName", "event",
+                        default="unknown"),
         "session_id": _first(payload, "session_id", "sessionId", default=""),
         "agent_id": _first(payload, "agent_id", "agentId", default=""),
         "agent_type": _first(payload, "agent_type", "agentType", default=""),

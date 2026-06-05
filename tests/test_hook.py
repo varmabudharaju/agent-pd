@@ -42,6 +42,20 @@ def test_build_event_infers_denial_from_event_name():
     assert ev["decision"] == "deny"   # inferred from the event name
 
 
+def test_build_event_reads_camelcase_event_name():
+    # Every other field is mapped from camelCase (sessionId/toolName/...); the event
+    # name must be too. A camelCase PermissionDenied must still force decision=deny and
+    # not leak `hookEventName` into _extra.
+    payload = {
+        "hookEventName": "PermissionDenied",
+        "sessionId": "s1", "toolName": "Bash", "toolInput": {"command": "rm -rf /"},
+    }
+    ev = build_event(payload)
+    assert ev["event"] == "PermissionDenied"
+    assert ev["decision"] == "deny"
+    assert "hookEventName" not in (ev.get("_extra") or {})
+
+
 def test_build_event_honors_explicit_decision():
     payload = {"hook_event_name": "PermissionDenied", "session_id": "s1",
                "permissionDecision": "deny", "reason": "blocked by rule"}
