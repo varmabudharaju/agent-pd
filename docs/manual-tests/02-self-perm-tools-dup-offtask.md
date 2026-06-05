@@ -62,10 +62,10 @@ $ python3 -c "from agent_pd.detectors import DETECTORS; print(list(DETECTORS))"
 agent definitions, or the pd rules file) should be flagged **critical**, whatever the method. Writing
 a normal source file should not be flagged.
 
-### Setup + action (copy-paste, run from the repo root `/Users/varma/agent-pd`)
+### Setup + action (copy-paste, run from the repo root `/path/to/agent-pd`)
 
 ```bash
-cd /Users/varma/agent-pd
+cd /path/to/agent-pd
 SB="$(cd "${TMPDIR:-/tmp}" && pwd -P)/pd-mt02-selfperm"
 rm -rf "$SB"
 mkdir -p "$SB/audit" "$SB/proj/.claude/agents"
@@ -133,7 +133,7 @@ tool should not.
 ### Setup + action
 
 ```bash
-cd /Users/varma/agent-pd
+cd /path/to/agent-pd
 SB="$(cd "${TMPDIR:-/tmp}" && pwd -P)/pd-mt02-toolscope"
 rm -rf "$SB"
 mkdir -p "$SB/audit" "$SB/proj/.claude/agents"
@@ -206,7 +206,7 @@ free-text `description` make two otherwise-identical Bash calls count as distinc
 ### Setup + action
 
 ```bash
-cd /Users/varma/agent-pd
+cd /path/to/agent-pd
 SB="$(cd "${TMPDIR:-/tmp}" && pwd -P)/pd-mt02-redundant"
 rm -rf "$SB"
 mkdir -p "$SB/audit" "$SB/proj"
@@ -281,7 +281,7 @@ you must build the meta layout, as below.
 ### Setup + action
 
 ```bash
-cd /Users/varma/agent-pd
+cd /path/to/agent-pd
 SB="$(cd "${TMPDIR:-/tmp}" && pwd -P)/pd-mt02-offtask"
 rm -rf "$SB"
 mkdir -p "$SB/audit" "$SB/proj"

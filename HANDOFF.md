@@ -5,7 +5,7 @@ tool/permission event; a CLI audits those logs and reports rule offenses with ev
 **Catch-and-report only — the hook never blocks an agent.**
 
 - **Repo:** https://github.com/varmabudharaju/agent-pd (branch `master`)
-- **Local:** `/Users/varma/agent-pd` · Python 3.11 (use `python3`) · CLI: `pd`
+- **Local:** `/path/to/agent-pd` · Python 3.11 (use `python3`) · CLI: `pd`
 - **State at handoff:** 438 tests passing, working tree clean, all pushed.
 - **Audit-log integrity landed** (`feat/audit-integrity`): events are hash-chained
   (`seq` + `chain = sha256(prev_chain + canonical(event))`, HMAC-SHA256 if `PD_AUDIT_KEY`

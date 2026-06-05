@@ -35,10 +35,10 @@ see the same text and the same exit codes.
 
 > macOS `/tmp` is a symlink to `/private/tmp`; we resolve the real path so
 > in-project reads stay in scope. Run everything from the repo root
-> (`/Users/varma/agent-pd`).
+> (`/path/to/agent-pd`).
 
 ```bash
-cd /Users/varma/agent-pd
+cd /path/to/agent-pd
 SB="$(cd "${TMPDIR:-/tmp}" && pwd -P)/pd-itest"
 AUD="$SB/audit"
 rm -rf "$SB" && mkdir -p "$AUD"

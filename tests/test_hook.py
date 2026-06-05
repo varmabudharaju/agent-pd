@@ -324,7 +324,7 @@ def test_build_event_real_recorded_denial_shape():
         },
         "reason": ("Direct push to the default branch (master) bypasses PR review; "
                    "the user never specifically authorized pushing directly to master."),
-        "cwd": "/Users/varma/agent-pd",
+        "cwd": "/home/dev/agent-pd",
         # NB: no permissionDecision/decision/denial_reason key — matches the observed real event.
     }
     ev = build_event(payload)
@@ -334,5 +334,5 @@ def test_build_event_real_recorded_denial_shape():
     assert ev["tool_name"] == "Bash"
     assert ev["tool_input"]["command"] == "git push origin master"
     assert ev["agent_id"] == "" and ev["agent_type"] == ""   # main agent
-    assert ev["cwd"] == "/Users/varma/agent-pd"
+    assert ev["cwd"] == "/home/dev/agent-pd"
     assert "_extra" not in ev                 # every field in the real shape is mapped

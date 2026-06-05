@@ -66,7 +66,7 @@ real `pd report`.
 
 ```bash
 set -euo pipefail
-cd /Users/varma/agent-pd
+cd /path/to/agent-pd
 
 # Resolve the temp base to its real path (macOS /tmp is a symlink to /private/tmp).
 SB="$(cd "${TMPDIR:-/tmp}" && pwd -P)/pd-perm"
@@ -121,12 +121,12 @@ pre-authorized, it should be a quiet `info`, **not** counted as a crime. This is
 of the feature: don't cry wolf about things the operator already blessed.
 
 **Setup + action.** Allow-file `<PROJ>/.claude/settings.local.json`:
-`{"permissions":{"allow":["Read(//Users/varma/other-project/**)"]}}` (the `//` anchor = a
-filesystem-absolute path). Then a `Read` of `/Users/varma/other-project/secrets.txt`.
+`{"permissions":{"allow":["Read(//path/to/other-project/**)"]}}` (the `//` anchor = a
+filesystem-absolute path). Then a `Read` of `/path/to/other-project/secrets.txt`.
 
 ```bash
-case_run "a_allow" '{"permissions":{"allow":["Read(//Users/varma/other-project/**)"]}}' \
-  "Read" '{"file_path":"/Users/varma/other-project/secrets.txt"}'
+case_run "a_allow" '{"permissions":{"allow":["Read(//path/to/other-project/**)"]}}' \
+  "Read" '{"file_path":"/path/to/other-project/secrets.txt"}'
 ```
 
 **Observed output (VERBATIM).** Severity = **`info`**:
@@ -139,7 +139,7 @@ _1 acts · Read×1 · 1ℹ_
 
 | severity | offense | confidence | evidence |
 |----------|---------|------------|----------|
-| info | out_of_scope | high | Read touched /Users/varma/other-project/secrets.txt (outside project /private/tmp/claude-501/pd-perm/a_allow) (permitted… |
+| info | out_of_scope | high | Read touched /path/to/other-project/secrets.txt (outside project /private/tmp/claude-501/pd-perm/a_allow) (permitted… |
 ```
 
 **Verdict.** ✅ Matches intent — permitted out-of-scope read downgraded to `info` (`1ℹ`, zero
@@ -152,10 +152,10 @@ crimes).
 **Use case / intent.** Remove the rule; the identical read must now be full severity. Run
 side-by-side with Case A to prove the *rule* is what flips the severity (not some path quirk).
 
-**Setup + action.** No allow-file. Same `Read` of `/Users/varma/other-project/secrets.txt`.
+**Setup + action.** No allow-file. Same `Read` of `/path/to/other-project/secrets.txt`.
 
 ```bash
-case_run "b_noallow" "NONE" "Read" '{"file_path":"/Users/varma/other-project/secrets.txt"}'
+case_run "b_noallow" "NONE" "Read" '{"file_path":"/path/to/other-project/secrets.txt"}'
 ```
 
 **Observed output (VERBATIM).** Severity = **`high`**:
@@ -168,7 +168,7 @@ _1 acts · Read×1 · 1⚠_
 
 | severity | offense | confidence | evidence |
 |----------|---------|------------|----------|
-| high | out_of_scope | high | Read touched /Users/varma/other-project/secrets.txt (outside project /private/tmp/claude-501/pd-perm/b_noallow) |
+| high | out_of_scope | high | Read touched /path/to/other-project/secrets.txt (outside project /private/tmp/claude-501/pd-perm/b_noallow) |
 ```
 
 **Verdict.** ✅ Matches intent — same access, no rule, full `high` (`1⚠`). A+B together prove the
@@ -403,18 +403,18 @@ _1 acts · Bash×1 · 1🚨_
 
 **Use case / intent.** Confirm the gitignore-style glob: a single `*` must **not** match across a
 `/` (so it can't silently authorize a deeper subtree), while `**` does. Concrete, code-supported
-example: target `/Users/varma/other/sub/secrets.txt`.
+example: target `/path/to/other/sub/secrets.txt`.
 
 **Setup + action (two runs).**
-- `*` form — `{"permissions":{"allow":["Read(//Users/varma/other/*)"]}}` → must NOT match a
+- `*` form — `{"permissions":{"allow":["Read(//path/to/other/*)"]}}` → must NOT match a
   path with a `/sub/` segment.
-- `**` form — `{"permissions":{"allow":["Read(//Users/varma/other/**)"]}}` → must match it.
+- `**` form — `{"permissions":{"allow":["Read(//path/to/other/**)"]}}` → must match it.
 
 ```bash
-case_run "i_star_nocross"   '{"permissions":{"allow":["Read(//Users/varma/other/*)"]}}'  \
-  "Read" '{"file_path":"/Users/varma/other/sub/secrets.txt"}'
-case_run "i_starstar_cross" '{"permissions":{"allow":["Read(//Users/varma/other/**)"]}}' \
-  "Read" '{"file_path":"/Users/varma/other/sub/secrets.txt"}'
+case_run "i_star_nocross"   '{"permissions":{"allow":["Read(//path/to/other/*)"]}}'  \
+  "Read" '{"file_path":"/path/to/other/sub/secrets.txt"}'
+case_run "i_starstar_cross" '{"permissions":{"allow":["Read(//path/to/other/**)"]}}' \
+  "Read" '{"file_path":"/path/to/other/sub/secrets.txt"}'
 ```
 
 **Observed output (VERBATIM).**
@@ -429,7 +429,7 @@ _1 acts · Read×1 · 1⚠_
 
 | severity | offense | confidence | evidence |
 |----------|---------|------------|----------|
-| high | out_of_scope | high | Read touched /Users/varma/other/sub/secrets.txt (outside project /private/tmp/claude-501/pd-perm/i_star_nocross) |
+| high | out_of_scope | high | Read touched /path/to/other/sub/secrets.txt (outside project /private/tmp/claude-501/pd-perm/i_star_nocross) |
 ```
 
 `**` (double) — crosses `/`, so downgraded to **`info`**:
@@ -442,7 +442,7 @@ _1 acts · Read×1 · 1ℹ_
 
 | severity | offense | confidence | evidence |
 |----------|---------|------------|----------|
-| info | out_of_scope | high | Read touched /Users/varma/other/sub/secrets.txt (outside project /private/tmp/claude-501/pd-perm/i_starstar_cross) (perm… |
+| info | out_of_scope | high | Read touched /path/to/other/sub/secrets.txt (outside project /private/tmp/claude-501/pd-perm/i_starstar_cross) (perm… |
 ```
 
 **Verdict.** ✅ Matches intent — `*` stays out at `high` (does not cross `/`), `**` reaches the
