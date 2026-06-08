@@ -14,13 +14,10 @@ A focused pass that closed a class of **under-flagging / data-integrity** holes 
 where a real crime could slip past as `info` or go uncounted. Tests 155 → 347.
 
 - **Faithful permission matching.** Allow-rule matching now mirrors Claude Code's real
-  semantics instead of a naïve `startswith`: shell-operator splitting (a `Bash(git:*)`
-  rule no longer authorizes `git status && rm -rf ~`), command-substitution `$(...)` /
-  backtick extraction, redirect targets treated as a separate authorization (a command
-  rule can't license `> ~/.ssh/authorized_keys`), word-boundary prefix matching
-  (`npm install:*` ≠ `npm installmalware`), gitignore-style globs (`*` does **not** cross
-  `/`, `**` does), spec stripping, anchoring, process-wrapper stripping. Bias is
-  conservative: ambiguity → **not** permitted.
+  semantics instead of a naïve `startswith` (operator splitting, command-substitution/backtick
+  extraction, redirect isolation, word-boundary prefixes, gitignore globs, spec/anchor/
+  process-wrapper stripping), biased conservative: ambiguity → **not** permitted. Full
+  algorithm + worked examples in [SYSTEM-DESIGN.md](SYSTEM-DESIGN.md) §9 (Permission model).
 - **Sensitive paths are immune to downgrade.** A sensitive-path offense is **never**
   reduced to `info` by an allow-rule, no matter what the user configured.
 - **Control-file protection (`self_permission`).** Now flags **any** agent write to its

@@ -35,12 +35,11 @@ not trusted on its own.
 
 Offenses that match the user's `permissions.allow` rules (from `~/.claude/settings.json` or
 the project `.claude/settings.local.json`) are downgraded to **informational** — a permitted
-action is an FYI, not a crime. The matching mirrors **Claude Code's own semantics**:
-shell-operator splitting (a `Bash(git:*)` rule does **not** license `git status && rm -rf ~`),
-command-substitution and backtick extraction, redirect targets treated as a separate
-authorization (a command rule can't license `> ~/.ssh/authorized_keys`), word-boundary
-prefix matching (`npm install:*` ≠ `npm installmalware`), and gitignore-style globs
-(`*` does not cross `/`, `**` does). Ambiguity resolves **conservatively → not permitted**.
+action is an FYI, not a crime. The matching mirrors **Claude Code's own semantics**
+(shell-operator splitting, command-substitution/backtick extraction, redirect targets as a
+separate authorization, word-boundary prefixes, gitignore-style globs) and resolves ambiguity
+**conservatively → not permitted**. The exact algorithm and worked examples live in
+[SYSTEM-DESIGN.md](SYSTEM-DESIGN.md) §9 (Permission model).
 
 Two categories are **never** downgraded, no matter what allow-rule you write:
 
