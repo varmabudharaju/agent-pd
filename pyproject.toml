@@ -31,6 +31,7 @@ dependencies = ["PyYAML>=6.0"]
 # Optional: only needed for `pd judge` (the off_task LLM judge). Core stays zero-dep.
 [project.optional-dependencies]
 judge = ["anthropic>=0.45"]   # structured-output `output_config`; judge_records also guards the call
+test = ["pytest>=7"]          # test runner (not needed at runtime; used by CI and `pip install -e ".[test]"`)
 
 [project.urls]
 Homepage = "https://github.com/varmabudharaju/agent-pd"
