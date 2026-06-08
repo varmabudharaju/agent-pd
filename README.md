@@ -8,13 +8,13 @@ A logging-only hook records every tool &amp; permission event from the main agen
 subagents; the `pd` CLI replays that log through six detectors and reports rule offenses with
 quoted evidence. **Catch-and-report — it never blocks.**
 
-[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
-[![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB.svg?logo=python&logoColor=white)](pyproject.toml)
-[![Tests](https://img.shields.io/badge/tests-461_passing-brightgreen.svg)](docs/manual-tests/)
-[![Version](https://img.shields.io/badge/version-0.1.0-orange.svg)](pyproject.toml)
-[![Runtime deps](https://img.shields.io/badge/runtime_deps-PyYAML_only-lightgrey.svg)](pyproject.toml)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://github.com/varmabudharaju/agent-pd/blob/master/LICENSE)
+[![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB.svg?logo=python&logoColor=white)](https://github.com/varmabudharaju/agent-pd/blob/master/pyproject.toml)
+[![Tests](https://img.shields.io/badge/tests-461_passing-brightgreen.svg)](https://github.com/varmabudharaju/agent-pd/tree/master/docs/manual-tests/)
+[![Version](https://img.shields.io/badge/version-0.1.0-orange.svg)](https://github.com/varmabudharaju/agent-pd/blob/master/pyproject.toml)
+[![Runtime deps](https://img.shields.io/badge/runtime_deps-PyYAML_only-lightgrey.svg)](https://github.com/varmabudharaju/agent-pd/blob/master/pyproject.toml)
 
-**[Quickstart](#quickstart)** · **[How it works](#how-it-works-mental-model)** · **[Detectors](#the-detectors)** · **[Architecture](ARCHITECTURE.md)** · **[Security](SECURITY.md)**
+**[Quickstart](#quickstart)** · **[How it works](#how-it-works-mental-model)** · **[Detectors](#the-detectors)** · **[Architecture](https://github.com/varmabudharaju/agent-pd/blob/master/ARCHITECTURE.md)** · **[Security](https://github.com/varmabudharaju/agent-pd/blob/master/SECURITY.md)**
 
 </div>
 
@@ -31,7 +31,7 @@ quoted evidence. **Catch-and-report — it never blocks.**
 - 🎯 **Six deterministic detectors** at **zero token cost** — denied calls, out-of-scope &amp;
   credential access, permission bypass, self-permissioning, disallowed tools, off-task work.
 - 🔒 **Tamper-evident audit log** (hash-chained) with an optional **off-host append-only sink**.
-- 🙂 **Honest by design** — it raises the bar; it is **not** a sandbox. See [SECURITY.md](SECURITY.md).
+- 🙂 **Honest by design** — it raises the bar; it is **not** a sandbox. See [SECURITY.md](https://github.com/varmabudharaju/agent-pd/blob/master/SECURITY.md).
 
 ---
 
@@ -60,7 +60,7 @@ use a tool it wasn't allowed, or wander off its brief?*
 </p>
 
 > For the full picture — system context, component, sequence, detector-pipeline, and
-> integrity diagrams (with rendered images) — see [ARCHITECTURE.md](ARCHITECTURE.md).
+> integrity diagrams (with rendered images) — see [ARCHITECTURE.md](https://github.com/varmabudharaju/agent-pd/blob/master/ARCHITECTURE.md).
 
 - **The hook is a dumb, crash-safe recorder.** Registered globally in `~/.claude/settings.json`
   on PostToolUse / PermissionDenied / SubagentStart / SubagentStop. On each event it appends one
@@ -139,10 +139,10 @@ produces no offense. pd flags the five genuine problems — a sudo escalation, a
 `curl | sh`, a read of `~/.ssh`, a write to the agent's own settings, and a `/tmp` access
 outside the project — plus a subagent (`Researcher`) using `Bash`, a tool outside its
 declared read-only allowlist. That's five of the six detectors firing on one synthetic
-session. See [`examples/demo.sh`](examples/demo.sh) for the exact events.
+session. See [`examples/demo.sh`](https://github.com/varmabudharaju/agent-pd/blob/master/examples/demo.sh) for the exact events.
 
 > **Want to verify it on your own real Claude Code session?** Follow the safe ~15-minute
-> hands-on walkthrough in [`docs/manual-tests/TRY-IT-LIVE.md`](docs/manual-tests/TRY-IT-LIVE.md).
+> hands-on walkthrough in [`docs/manual-tests/TRY-IT-LIVE.md`](https://github.com/varmabudharaju/agent-pd/blob/master/docs/manual-tests/TRY-IT-LIVE.md).
 
 ---
 
@@ -260,7 +260,7 @@ shipped off-host, a later local rewrite can't reach it. **`pd sink status`** fla
 when more events shipped than remain locally — a truncation signal.
 
 > Append-only is a **deployment requirement** pd can't enforce, and the sink does not stop a
-> same-user agent from *forging* entries or *disabling* the hook. Read [SECURITY.md](SECURITY.md)
+> same-user agent from *forging* entries or *disabling* the hook. Read [SECURITY.md](https://github.com/varmabudharaju/agent-pd/blob/master/SECURITY.md)
 > for the full, honest framing before relying on any of this.
 
 ---
@@ -288,7 +288,7 @@ obfuscation or indirection can evade static detection. Known limits, in plain te
 - **Symlink resolution is best-effort** (the symlink must exist at analysis time).
 - **Sessions that predate the hook** (transcript-only, no `<sid>.jsonl`) don't appear in `pd report`.
 
-The full ledger of shipped / residual / declined items lives in [KNOWN-GAPS.md](KNOWN-GAPS.md).
+The full ledger of shipped / residual / declined items lives in [KNOWN-GAPS.md](https://github.com/varmabudharaju/agent-pd/blob/master/KNOWN-GAPS.md).
 
 ## How it can be improved (roadmap)
 
@@ -372,13 +372,13 @@ python3 -m pytest -q             # 461 tests, pure (no API key needed)
 ```
 
 TDD throughout; detectors, render, live, and judge are all unit-tested with no network. For the
-design in depth: [SYSTEM-DESIGN.md](SYSTEM-DESIGN.md) (formal design doc — goals, components,
-permission model, trade-offs) and [ARCHITECTURE.md](ARCHITECTURE.md) (diagrams). Honest
-limitations and roadmap live in [KNOWN-GAPS.md](KNOWN-GAPS.md).
+design in depth: [SYSTEM-DESIGN.md](https://github.com/varmabudharaju/agent-pd/blob/master/SYSTEM-DESIGN.md) (formal design doc — goals, components,
+permission model, trade-offs) and [ARCHITECTURE.md](https://github.com/varmabudharaju/agent-pd/blob/master/ARCHITECTURE.md) (diagrams). Honest
+limitations and roadmap live in [KNOWN-GAPS.md](https://github.com/varmabudharaju/agent-pd/blob/master/KNOWN-GAPS.md).
 
 ## License
 
-[Apache License 2.0](LICENSE) © Sai Ram Varma Budharaju. Free to use, modify, and distribute (including
+[Apache License 2.0](https://github.com/varmabudharaju/agent-pd/blob/master/LICENSE) © Sai Ram Varma Budharaju. Free to use, modify, and distribute (including
 commercially); retain the copyright and license notice. Includes a patent grant.
 </content>
 </invoke>

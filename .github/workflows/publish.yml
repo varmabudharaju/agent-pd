@@ -1,0 +1,61 @@
+name: publish
+
+# Build and publish agent-pd to PyPI when a GitHub Release is published.
+# Uses PyPI Trusted Publishing (OIDC) — no API token or password stored anywhere.
+# Register the trusted publisher on PyPI with:
+#   PyPI Project Name: agent-pd
+#   Owner:             varmabudharaju
+#   Repository name:   agent-pd
+#   Workflow name:     publish.yml
+#   Environment name:  pypi
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: python -m pip install --upgrade pip
+      - run: pip install -e .
+      - run: python -m pytest -q
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --upgrade build twine
+      - run: python -m build
+      - run: python -m twine check dist/*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi          # configure this environment in the repo settings
+    permissions:
+      id-token: write          # required for OIDC / Trusted Publishing
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1

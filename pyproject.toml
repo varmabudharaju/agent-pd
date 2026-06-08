@@ -37,6 +37,7 @@ Homepage = "https://github.com/varmabudharaju/agent-pd"
 Repository = "https://github.com/varmabudharaju/agent-pd"
 Issues = "https://github.com/varmabudharaju/agent-pd/issues"
 Documentation = "https://github.com/varmabudharaju/agent-pd#readme"
+Changelog = "https://github.com/varmabudharaju/agent-pd/blob/master/CHANGELOG.md"
 
 [project.scripts]
 pd = "agent_pd.cli:main"
