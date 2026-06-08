@@ -256,7 +256,10 @@ def _cmd_sink_status(args) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
+    from . import __version__
     p = argparse.ArgumentParser(prog="pd", description="Police department for Claude Code subagents")
+    p.add_argument("-V", "--version", action="version",
+                   version=f"agent-pd {__version__}")
     sub = p.add_subparsers(dest="cmd", required=True)
     # Read commands default to the same place the hook writes: PD_AUDIT_DIR if set,
     # else ~/.claude/pd/audit. So `pd report` finds the logs without --audit-dir.

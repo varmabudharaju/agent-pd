@@ -18,7 +18,7 @@ quoted evidence. **Catch-and-report — it never blocks.**
 
 </div>
 
-![capture vs. read](docs/diagrams/02-two-phase-flow.png)
+![capture vs. read](https://raw.githubusercontent.com/varmabudharaju/agent-pd/master/docs/diagrams/02-two-phase-flow.png)
 
 > **Flight recorder + police scanner, not a firewall.** If you need to *stop* an action, that
 > stays with Claude Code's permission prompts or an OS sandbox. agent-pd tells you what an agent
@@ -56,7 +56,7 @@ use a tool it wasn't allowed, or wander off its brief?*
 ```
 
 <p align="center">
-  <img src="docs/diagrams/01-system-context.png" width="560" alt="agent-pd system context">
+  <img src="https://raw.githubusercontent.com/varmabudharaju/agent-pd/master/docs/diagrams/01-system-context.png" width="560" alt="agent-pd system context">
 </p>
 
 > For the full picture — system context, component, sequence, detector-pipeline, and
@@ -77,11 +77,14 @@ use a tool it wasn't allowed, or wander off its brief?*
 ## Install
 
 ```bash
-pip install --user -e .
+pip install agent-pd     # from PyPI (core; PyYAML the only runtime dep)
 pd install-hook          # idempotently registers the logging hook in ~/.claude/settings.json
 ```
 
 Then just use Claude Code as normal. The hook records in the background.
+
+> Optional LLM judge: `pip install "agent-pd[judge]"` adds the Anthropic SDK for `pd judge`.
+> From source (dev): `pip install -e ".[judge]"`.
 
 ## Quickstart
 
