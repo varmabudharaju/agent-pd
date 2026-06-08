@@ -30,6 +30,11 @@ _SCRIPT_PATH_RE = re.compile(
 )
 # Cap candidate length so a quoted blob of prose/code isn't treated as a path.
 _MAX_SCRIPT_CAND = 256
+# A real path/basename uses only these chars. Anything else (=[](){},:;) means the
+# candidate is a code/JSON fragment that mismatched-quote pairing pulled out, not a path.
+_SAFE_PATH_CHARS = set(
+    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._/~*-"
+)
 # A simple literal $VAR / ${VAR} reference (Evasion 2).
 _VARREF_RE = re.compile(r"^\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?$")
 
@@ -112,7 +117,13 @@ def classify(abspath: str, root: str, scope_dirs: list, sensitive_patterns: list
     real = _realpath(abspath)
     if real == abspath:
         return norm
-    via = _classify_one(real, root, scope_dirs, sensitive_patterns, project_boundary)
+    # Compare the realpath'd file against the realpath'd ROOT. Otherwise a project whose
+    # own path contains a symlink (e.g. /tmp -> /private/tmp on macOS, or a symlinked work
+    # dir) makes EVERY in-project file look out-of-bounds. Realpathing both keeps the
+    # Evasion-3 catch intact: an in-project symlink pointing OUT still resolves outside the
+    # real root -> boundary/sensitive.
+    real_root = _realpath(root)
+    via = _classify_one(real, real_root, scope_dirs, sensitive_patterns, project_boundary)
     return via if _KIND_RANK[via[0]] > _KIND_RANK[norm[0]] else norm
 
 
@@ -158,6 +169,9 @@ def _extract_from_script(script: str) -> list:
         # skip URLs, over-long blobs, and whitespace-bearing prose (not a path token)
         if p.startswith(_URL_PREFIXES) or len(p) > _MAX_SCRIPT_CAND or any(c.isspace() for c in p):
             continue
+        # skip code/JSON fragments left by mismatched-quote pairing (e.g. `E=[(`, `,{`, `:`)
+        if any(c not in _SAFE_PATH_CHARS for c in p):
+            continue
         seen.add(p)
         out.append(p)
     return out
@@ -190,6 +204,15 @@ def _extract_one(command: str, assigns: dict = None, sensitive_patterns: list = 
             continue
         t = _subst_var(t, assigns)                  # Evasion 2: $VAR -> literal
         if t.startswith(_URL_PREFIXES):
+            continue
+        # Reject code/JSON fragments: a real path token never contains a quote or brace.
+        # These appear when a command embeds JSON/python (e.g. `python3 -c "...{'command':
+        # 'rm -rf /tmp/x'}..."`) and segment-splitting leaves an unbalanced token —
+        # otherwise we'd emit garbage out_of_scope evidence like  /tmp/x'},'PostToolUse'.
+        if any(c in t for c in "\"'{}"):
+            continue
+        t = t.rstrip(",;)")                          # trailing shell punctuation abutting a path
+        if not t:
             continue
         looks = t.startswith(("/", "~", "./", "../")) or t in ("..", ".")
         first_positional = not seen_positional

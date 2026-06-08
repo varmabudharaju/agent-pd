@@ -66,8 +66,11 @@ def render_markdown(records: list, offenses: list, session_id=None,
             return f"no agent matching '{only_agent}' in session {session_id or '(most recent)'}"
         return _render_focus(matches, by_agent, session_id)
 
-    lines = [f"## Police report — {len(records)} agents, {len(offenses)} offense(s)", ""]
-    for rec in records:
+    # Drop phantom 0-act agents (SubagentStart/Stop lifecycle records with no tool calls
+    # and no offenses) so they don't clutter the report as "? (id) 0 acts" sections.
+    shown = [r for r in records if r.actions or by_agent.get(r.agent_id)]
+    lines = [f"## Police report — {len(shown)} agents, {len(offenses)} offense(s)", ""]
+    for rec in shown:
         offs = by_agent.get(rec.agent_id, [])
         digest = agent_digest(rec, offs)
         lines.append(f"### {agent_label(rec, session_id)}")

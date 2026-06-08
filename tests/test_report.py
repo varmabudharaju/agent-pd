@@ -79,3 +79,15 @@ def test_agent_focus_not_found():
     recs = [AgentRecord(agent_id="a1", agent_type="Explore", brief="b", cwd="/x")]
     md = render_markdown(recs, [], session_id="s1", only_agent="zzz")
     assert "no agent matching 'zzz'" in md
+
+
+def test_report_skips_empty_agents():
+    # Subagent lifecycle records (SubagentStart/Stop) create a 0-act AgentRecord that
+    # should NOT clutter the report as a phantom "? (id) 0 acts" section.
+    from agent_pd.models import AgentRecord, Action
+    busy = AgentRecord(agent_id="", agent_type="main", brief="", cwd="/p",
+                       actions=[Action(agent_id="", tool_name="Bash", tool_input={"command": "ls"})])
+    ghost = AgentRecord(agent_id="ghost123", agent_type="", brief="", cwd="", actions=[])
+    md = render_markdown([busy, ghost], [], session_id="S")
+    assert "ghost123" not in md
+    assert "1 agents" in md

