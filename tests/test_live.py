@@ -25,6 +25,25 @@ def test_banner_once_per_agent(tmp_path):
     assert r2.new_agent is False
 
 
+def test_watch_rereads_allow_rules_midsession(tmp_path, monkeypatch):
+    # The live monitor must re-read permission allow-rules per event, so a permission
+    # granted mid-session (written to .claude/settings.local.json) is reflected live and
+    # not frozen at the agent's first-seen state.
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "cfg"))   # isolate user config
+    proj = tmp_path / "proj"
+    (proj / ".claude").mkdir(parents=True)
+    mon = _mon(tmp_path)
+    ev = _ev("a1", "Read", {"file_path": str(proj / "x.py")}, agent_type="main")
+    ev["cwd"] = str(proj)
+    mon.process(dict(ev), RULES)
+    assert mon.records["a1"].allow_rules == []          # no rules yet
+    # grant a permission mid-session
+    (proj / ".claude" / "settings.local.json").write_text(
+        '{"permissions": {"allow": ["Read(~/secrets/*)"]}}')
+    mon.process(dict(ev), RULES)
+    assert "Read(~/secrets/*)" in mon.records["a1"].allow_rules
+
+
 def test_denial_flagged_as_permission_bypass(tmp_path):
     mon = _mon(tmp_path)
     r = mon.process(_ev("a1", "Bash", {"command": "rm x"}, event="PermissionDenied",
@@ -127,3 +146,16 @@ def test_tail_events_reads_compacted_gz(tmp_path):
     # tail_events must read it without crashing.
     events = list(tail_events(audit, "s1", poll_interval=0, _max_polls=1))
     assert events == [{"i": 1}, {"i": 2}]
+
+
+def test_watch_reports_no_sessions(tmp_path):
+    # A stale PD_AUDIT_DIR (or wrong --audit-dir) must not silently show an empty feed;
+    # watch should say so and name the dir it looked in.
+    out_lines = []
+    rc = watch(style=Style(color=False, emoji=False),
+               projects_dir=tmp_path / "p", audit_dir=tmp_path / "empty",
+               out=out_lines.append)
+    assert rc == 0
+    blob = "\n".join(out_lines)
+    assert "no sessions" in blob.lower()
+    assert str(tmp_path / "empty") in blob

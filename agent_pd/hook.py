@@ -24,13 +24,21 @@ def resolve_audit_dir(cli_arg=None) -> Path:
     """Where to write the audit log. Precedence: explicit arg (baked by `pd
     install-hook --audit-dir`) > the PD_AUDIT_DIR env var > the default under
     ~/.claude. Lets the user keep logs somewhere they choose without losing the
-    safe default."""
+    safe default.
+
+    ALWAYS returns an ABSOLUTE path. A relative --audit-dir or PD_AUDIT_DIR would
+    otherwise be created relative to the agent's (constantly changing) cwd, scattering
+    log directories across every dir the agent touches (the ./PATH footgun). We use
+    os.path.abspath (not realpath/resolve) so we make it absolute without rewriting
+    symlinks — matching how install_hook bakes the path."""
     if cli_arg:
-        return Path(cli_arg).expanduser()
-    env = os.environ.get("PD_AUDIT_DIR")
-    if env:
-        return Path(env).expanduser()
-    return DEFAULT_AUDIT_DIR
+        p = Path(cli_arg).expanduser()
+    else:
+        env = os.environ.get("PD_AUDIT_DIR")
+        if not env:
+            return DEFAULT_AUDIT_DIR        # already absolute
+        p = Path(env).expanduser()
+    return Path(os.path.abspath(p))
 
 
 def _audit_dir_from_argv(argv) -> str:

@@ -93,3 +93,71 @@ def test_sink_override(tmp_path):
     # unspecified keys keep defaults
     assert r.sink["timeout"] == 10
     assert r.sink["url"] is None
+
+
+# --- auto-discovery of pd-rules.yaml (no explicit --rules) -----------------------
+
+def test_discover_finds_cwd_file(tmp_path, monkeypatch):
+    from agent_pd.config import discover_rules_path
+    p = tmp_path / "pd-rules.yaml"
+    p.write_text("off_task_overlap_threshold: 0.5\n")
+    monkeypatch.chdir(tmp_path)
+    assert discover_rules_path(home=tmp_path / "nohome") == p
+
+
+def test_discover_finds_project_root_from_subdir(tmp_path, monkeypatch):
+    from agent_pd.config import discover_rules_path
+    (tmp_path / ".git").mkdir()                       # mark tmp_path as a project root
+    rules = tmp_path / "pd-rules.yaml"
+    rules.write_text("off_task_overlap_threshold: 0.5\n")
+    sub = tmp_path / "src" / "deep"
+    sub.mkdir(parents=True)
+    monkeypatch.chdir(sub)
+    assert discover_rules_path(home=tmp_path / "nohome") == tmp_path / "pd-rules.yaml"
+
+
+def test_discover_finds_home_file(tmp_path, monkeypatch):
+    from agent_pd.config import discover_rules_path
+    work = tmp_path / "work"                          # a dir with no rules file
+    work.mkdir()
+    home = tmp_path / "home"
+    (home / ".claude").mkdir(parents=True)
+    hp = home / ".claude" / "pd-rules.yaml"
+    hp.write_text("off_task_overlap_threshold: 0.5\n")
+    monkeypatch.chdir(work)
+    assert discover_rules_path(home=home) == hp
+
+
+def test_discover_returns_none_when_absent(tmp_path, monkeypatch):
+    from agent_pd.config import discover_rules_path
+    work = tmp_path / "work"
+    work.mkdir()
+    monkeypatch.chdir(work)
+    assert discover_rules_path(home=tmp_path / "nohome") is None
+
+
+def test_load_rules_auto_uses_discovered_file(tmp_path, monkeypatch):
+    from agent_pd.config import load_rules_auto
+    (tmp_path / "pd-rules.yaml").write_text("off_task_overlap_threshold: 0.5\n")
+    monkeypatch.chdir(tmp_path)
+    r = load_rules_auto(home=tmp_path / "nohome")
+    assert r.off_task_overlap_threshold == 0.5
+
+
+def test_load_rules_auto_explicit_beats_discovery(tmp_path, monkeypatch):
+    from agent_pd.config import load_rules_auto
+    (tmp_path / "pd-rules.yaml").write_text("off_task_overlap_threshold: 0.5\n")
+    other = tmp_path / "other.yaml"
+    other.write_text("off_task_overlap_threshold: 0.9\n")
+    monkeypatch.chdir(tmp_path)
+    r = load_rules_auto(str(other), home=tmp_path / "nohome")
+    assert r.off_task_overlap_threshold == 0.9
+
+
+def test_load_rules_auto_defaults_when_none_found(tmp_path, monkeypatch):
+    from agent_pd.config import load_rules_auto
+    work = tmp_path / "work"
+    work.mkdir()
+    monkeypatch.chdir(work)
+    r = load_rules_auto(home=tmp_path / "nohome")
+    assert r.off_task_overlap_threshold == 0.15

@@ -24,6 +24,29 @@ def test_resolve_audit_dir_precedence(tmp_path, monkeypatch):
     assert hook.resolve_audit_dir(str(tmp_path / "argdir")) == (tmp_path / "argdir")
 
 
+def test_resolve_audit_dir_absolutizes_relative_env(tmp_path, monkeypatch):
+    # A RELATIVE PD_AUDIT_DIR must be made absolute, or the hook would create it relative
+    # to the agent's (changing) cwd and scatter logs everywhere (the ./PATH footgun).
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("PD_AUDIT_DIR", "rellogs")
+    p = hook.resolve_audit_dir()
+    assert p.is_absolute()
+    assert p.name == "rellogs"
+
+
+def test_resolve_audit_dir_absolutizes_relative_arg(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("PD_AUDIT_DIR", raising=False)
+    p = hook.resolve_audit_dir("relarg")
+    assert p.is_absolute()
+    assert p.name == "relarg"
+
+
+def test_resolve_audit_dir_default_is_absolute(monkeypatch):
+    monkeypatch.delenv("PD_AUDIT_DIR", raising=False)
+    assert hook.resolve_audit_dir().is_absolute()
+
+
 def test_hook_main_honors_pd_audit_dir_env(tmp_path, monkeypatch):
     import io
     monkeypatch.setenv("PD_AUDIT_DIR", str(tmp_path / "logs"))

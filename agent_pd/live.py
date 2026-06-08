@@ -86,6 +86,12 @@ class LiveMonitor:
         rec.actions.append(action)
         self.total_acts += 1
 
+        # Re-read the permission allow-rules from disk for THIS event's cwd, so a
+        # permission granted mid-session (written to .claude/settings.local.json) is
+        # reflected live — the rules are NOT frozen at the agent's first-seen state.
+        # Cheap (a few small JSON reads) and keeps the info-downgrade current.
+        rec.allow_rules = load_allow_rules(event.get("cwd", "") or rec.cwd)
+
         new = []
         for o in run_detectors(rec, rules):
             key = (o.offense, o.evidence)
@@ -195,8 +201,19 @@ def watch(session=None, crimes_only=False, verbose=False, all_sessions=False, st
     rules = rules if rules is not None else load_rules(None)
     mon = LiveMonitor(projects_dir=projects_dir, audit_dir=audit_dir)
 
+    # Guard against a stale PD_AUDIT_DIR / wrong --audit-dir silently showing an empty
+    # feed: if there's no session to follow, say so and name the dir we looked in.
+    # (_events is the test-injection path — skip the guard there.)
+    if _events is None and not all_sessions:
+        resolved = session or store.latest_session(audit_dir)
+        if resolved is None:
+            out(f" agent-pd · no sessions found in {audit_dir}")
+            out("   set PD_AUDIT_DIR or pass --audit-dir if your logs are elsewhere")
+            return 0
+        session = resolved
+
     where = "ALL sessions" if all_sessions else f"session {session or '(most recent)'}"
-    out(f" agent-pd · watching {where}    [Ctrl-C to stop]")
+    out(f" agent-pd · watching {where}  ·  {audit_dir}    [Ctrl-C to stop]")
     out("─" * 80)
     if _events is not None:
         events = _events

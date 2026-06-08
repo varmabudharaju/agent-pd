@@ -2,7 +2,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from .config import load_rules
+from .config import load_rules, load_rules_auto
 from .investigator import gather, _latest_session, DEFAULT_PROJECTS_DIR, DEFAULT_AUDIT_DIR
 from .detectors import run_detectors
 from .report import render_json, render_markdown
@@ -13,8 +13,12 @@ from . import sink
 
 
 def _cmd_report(args) -> int:
-    rules = load_rules(args.rules)
+    rules = load_rules_auto(args.rules)
     sid = args.session or _latest_session(Path(args.projects_dir), Path(args.audit_dir))
+    if sid is None:
+        print(f"no sessions found in {args.audit_dir}")
+        print("set PD_AUDIT_DIR or pass --audit-dir if your logs are elsewhere")
+        return 0
     records = gather(session_id=sid, projects_dir=args.projects_dir, audit_dir=args.audit_dir)
     offenses = []
     for rec in records:
@@ -49,7 +53,7 @@ def _cmd_install_hook(args) -> int:
 
 def _cmd_judge(args) -> int:
     from . import judge as judge_mod
-    rules = load_rules(args.rules)
+    rules = load_rules_auto(args.rules)
     records = gather(session_id=args.session,
                      projects_dir=args.projects_dir, audit_dir=args.audit_dir)
     est = judge_mod.estimate(records, rules)
@@ -94,13 +98,14 @@ def _cmd_watch(args) -> int:
     from .live import watch
     from .render import Style
     style = Style(color=not args.no_color, emoji=not args.no_emoji)
+    rules = load_rules_auto(args.rules)
     return watch(session=args.session, crimes_only=args.crimes_only, verbose=args.verbose,
-                 all_sessions=args.all_sessions, style=style,
+                 all_sessions=args.all_sessions, style=style, rules=rules,
                  audit_dir=args.audit_dir, projects_dir=args.projects_dir)
 
 
 def _cmd_compact(args) -> int:
-    rules = load_rules(args.rules)
+    rules = load_rules_auto(args.rules)
     audit = Path(args.audit_dir)
     prune_days = (args.prune_older_than if args.prune_older_than is not None
                   else rules.storage["retention_days"])
@@ -197,7 +202,7 @@ def _resolve_sink_sessions(args):
 
 
 def _cmd_sink_push(args) -> int:
-    cfg = sink.resolve_sink_config(load_rules(args.rules))
+    cfg = sink.resolve_sink_config(load_rules_auto(args.rules))
     s = sink.make_sink(cfg)
     if s is None:
         print("no sink configured — set PD_SINK_TYPE=file|http "
@@ -260,7 +265,9 @@ def build_parser() -> argparse.ArgumentParser:
     r = sub.add_parser("report", help="produce an offense report for a session")
     r.add_argument("--session", default=None)
     r.add_argument("--format", choices=["json", "md", "both"], default="both")
-    r.add_argument("--rules", default=None)
+    r.add_argument("--rules", default=None,
+                   help="rules file (default: auto-discover pd-rules.yaml in the cwd, "
+                        "project root, or ~/.claude; else built-in defaults)")
     r.add_argument("--projects-dir", default=DEFAULT_PROJECTS_DIR)
     r.add_argument("--audit-dir", default=DEFAULT_AUDIT_DIR)
     r.add_argument("-v", "--verbose", action="store_true",
@@ -290,6 +297,8 @@ def build_parser() -> argparse.ArgumentParser:
                    help="show full commands and full offense reasons (no truncation)")
     w.add_argument("--no-color", action="store_true", help="disable ANSI color")
     w.add_argument("--no-emoji", action="store_true", help="disable emoji badges")
+    w.add_argument("--rules", default=None,
+                   help="rules file (default: auto-discover pd-rules.yaml; else defaults)")
     w.add_argument("--projects-dir", default=DEFAULT_PROJECTS_DIR)
     w.add_argument("--audit-dir", default=DEFAULT_AUDIT_DIR)
     w.set_defaults(func=_cmd_watch)

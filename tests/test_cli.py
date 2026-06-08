@@ -452,3 +452,12 @@ def test_compact_with_prune_older_than(tmp_path, capsys):
     assert rc == 0
     assert not (audit / "old.jsonl.gz").exists()       # pruned
     assert (audit / "active.jsonl").exists()            # active untouched
+
+
+def test_report_no_sessions_message(tmp_path, capsys):
+    rc = main(["report", "--audit-dir", str(tmp_path / "none"),
+               "--projects-dir", str(tmp_path / "np")])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "no sessions" in out.lower()
+    assert str(tmp_path / "none") in out

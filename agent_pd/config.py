@@ -168,6 +168,44 @@ def _deep_merge(base: dict, override: dict) -> dict:
     return out
 
 
+RULES_FILENAME = "pd-rules.yaml"
+
+
+def discover_rules_path(start_dir=None, home=None):
+    """Locate a pd-rules.yaml when the user did NOT pass an explicit --rules path.
+
+    Searches, nearest-first: the current directory, the enclosing project root
+    (the git root above cwd), then ~/.claude. Returns the first that exists as a
+    Path, or None to use the built-in defaults. This is what makes editing
+    pd-rules.yaml "just work" without a flag on every command."""
+    from . import scope                      # local import: scope is stdlib-only, no cycle
+    start = Path(start_dir) if start_dir else Path.cwd()
+    home = Path(home) if home else Path.home()
+    candidates = [start / RULES_FILENAME]
+    try:
+        candidates.append(Path(scope.project_root(str(start))) / RULES_FILENAME)
+    except Exception:
+        pass
+    candidates.append(home / ".claude" / RULES_FILENAME)
+    seen = set()
+    for c in candidates:
+        if c in seen:
+            continue
+        seen.add(c)
+        if c.exists():
+            return c
+    return None
+
+
+def load_rules_auto(explicit_path=None, home=None) -> Rules:
+    """CLI-facing rules loader. Precedence: an explicit --rules path > an
+    auto-discovered pd-rules.yaml (see discover_rules_path) > built-in defaults.
+    Use this from the command layer; use load_rules() directly where you want
+    pure path-or-defaults behavior with no discovery."""
+    path = explicit_path if explicit_path is not None else discover_rules_path(home=home)
+    return load_rules(path)
+
+
 def load_rules(path=None) -> Rules:
     data = copy.deepcopy(DEFAULTS)
     if path is not None and Path(path).exists():
