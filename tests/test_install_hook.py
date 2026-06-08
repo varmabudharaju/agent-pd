@@ -44,6 +44,17 @@ def test_install_hook_audit_dir_idempotent(tmp_path):
     assert sum("--audit-dir" in c for c in cmds) == 1
 
 
+def test_install_hook_bakes_absolute_audit_dir(tmp_path, monkeypatch):
+    # A RELATIVE --audit-dir must be baked as an ABSOLUTE path, or the hook would write
+    # to a dir relative to Claude's (changing) cwd — the ./PATH footgun.
+    import os
+    from agent_pd.install_hook import hook_command
+    monkeypatch.chdir(tmp_path)
+    cmd = hook_command("myrellogs")
+    baked = cmd.split("--audit-dir", 1)[1].strip().strip("'\"")
+    assert os.path.isabs(baked), cmd
+
+
 def test_install_hook_preserves_existing(tmp_path):
     s = tmp_path / "settings.json"
     s.write_text(json.dumps({"model": "opus", "hooks": {"Stop": [{"hooks": [

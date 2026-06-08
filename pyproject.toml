@@ -19,6 +19,10 @@ judge = ["anthropic>=0.45"]   # structured-output `output_config`; judge_records
 [project.scripts]
 pd = "agent_pd.cli:main"
 
+[tool.setuptools.packages.find]
+# Flat layout: only ship the package, not tests/docs/examples (or any stray dir).
+include = ["agent_pd*"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
