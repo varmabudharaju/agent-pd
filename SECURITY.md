@@ -180,7 +180,8 @@ but treat it like any other sensitive local file. `pd compact` gzips old logs, w
 **compresses but does not encrypt** them. There is no remote upload — everything stays on
 your machine. To clear it: `rm ~/.claude/pd/audit/*.jsonl` (logs repopulate as sessions run).
 
-The location is configurable (`PD_AUDIT_DIR`, or `pd install-hook --audit-dir PATH`). The
+The location is configurable (`PD_AUDIT_DIR`, or `pd install-hook --audit-dir ~/agent-pd-logs`,
+which is baked in as an absolute path). The
 hidden local default is chosen on purpose: **do not** relocate the log into a repo folder or a
 cloud-synced directory (iCloud/Dropbox/OneDrive) unless you accept that those plaintext tool
 inputs — possibly secrets — will be committed or synced off your machine.

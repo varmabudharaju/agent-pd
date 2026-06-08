@@ -1,4 +1,5 @@
 import json
+import os
 import shlex
 import sys
 from pathlib import Path
@@ -12,7 +13,10 @@ def hook_command(audit_dir=None) -> str:
     PATH` in so the hook writes there regardless of the user's shell environment."""
     cmd = HOOK_COMMAND
     if audit_dir:
-        cmd += " --audit-dir " + shlex.quote(str(Path(audit_dir).expanduser()))
+        # Bake an ABSOLUTE path (abspath, not resolve — no symlink rewriting) so the hook
+        # never writes to a dir relative to Claude's changing cwd.
+        abs = os.path.abspath(os.path.expanduser(str(audit_dir)))
+        cmd += " --audit-dir " + shlex.quote(abs)
     return cmd
 
 
