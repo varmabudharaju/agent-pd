@@ -38,7 +38,8 @@ where a real crime could slip past as `info` or go uncounted. Tests 155 → 347.
   critical even under a broad allow-rule; **escalation** patterns (sudo, chmod 777/setuid,
   chown root, shred, cwd-wipe `rm -rf .`/`*`) are downgradable only by a precise allow-rule.
   Routine `rm -rf ./build` is not flagged.
-- **Richer hook capture.** The hook now records `denial_reason`, `tool_result`,
+- **Richer hook capture.** The hook now records the denial `reason` (the real live field —
+  see the 2026-06-04 update below; `denial_reason` was the doc-claimed name), `tool_result`,
   `permission_mode`, `transcript_path`, and an `_extra` passthrough for unknown fields; it
   forces `decision=deny` on `PermissionDenied` even if a spoofed field says otherwise; it
   logs errors to stderr — and still always exits 0.
@@ -93,8 +94,10 @@ where a real crime could slip past as `info` or go uncounted. Tests 155 → 347.
   env-assignment prefixes (`FOO=bar cat /x`) and handles pipe segments, so the real
   path-bearing command past a `|` is scanned.
 - **NEW detectors** (now exist; see the detector table in `SYSTEM-DESIGN.md` / `README.md`):
-  - `self_permission` (critical) — flags a `Write`/`Edit`/`Bash` that writes a permission
-    key into a `.claude/settings*.json` file (an agent widening its own permissions).
+  - `self_permission` (critical) — flags **any** `Write`/`Edit`/`NotebookEdit`/`Bash` write to
+    the agent's own control files (`.claude/settings*.json`, `.claude/agents/*.md`,
+    `pd-rules*.yaml`), **regardless of content** (no longer requires seeing a literal
+    permission key — see the security-hardening section above).
   - `tool_not_allowed` (high) — flags a subagent using a tool outside its declared
     `tools:` allowlist (read from `.claude/agents/<type>.md` frontmatter, carried on
     `AgentRecord.tool_allowlist`).

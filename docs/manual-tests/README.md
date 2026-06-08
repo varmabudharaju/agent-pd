@@ -44,8 +44,11 @@ None are bugs, but a tester *will* hit these — they're documented in-suite and
    critical row; the second row is cosmetic. (Suites 01 & 03.)
 4. **`ts` is `null` when events are fed via `write_event` directly** (the harness path); only the
    live hook `main()` stamps arrival time. Cosmetic, affects synthetic logs only. (Suite 04.)
-5. **`--rules` is required for `scope_dirs` / custom patterns to take effect**; allow-rules instead
-   come from the event cwd's `.claude/settings*.json` (+ `CLAUDE_CONFIG_DIR`). (Suite 01.)
+5. **`scope_dirs` / custom patterns need a rules file** — auto-discovered `pd-rules.yaml` (cwd,
+   project root, or `~/.claude`) or an explicit `--rules`. These suites pass `--rules` because the
+   sandbox rules file lives at a custom path the auto-discovery wouldn't find. Allow-rules are
+   separate: they come from the event cwd's `.claude/settings*.json` (+ `CLAUDE_CONFIG_DIR`),
+   never from the rules file. (Suite 01.)
 
 ## How the harness works (shared across suites)
 

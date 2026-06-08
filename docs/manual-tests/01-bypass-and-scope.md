@@ -527,8 +527,9 @@ _2 acts · Read×2 · 1⚠_
 ```
 
 **Verdict:** ✅ matches intent. `src/app.py` produced no offense (in allowlist);
-`secrets/data.txt` flagged "outside scope". Pass `--rules` is required for the
-allowlist to take effect.
+`secrets/data.txt` flagged "outside scope". The `scope_dirs` allowlist takes effect
+because a rules file is loaded — here via `--rules` (the sandbox file is at a custom
+path); in normal use an auto-discovered `pd-rules.yaml` does the same with no flag.
 
 ---
 
@@ -793,8 +794,10 @@ Behaviors worth keeping in mind (all by-design, not bugs):
 - A destructive command targeting `/` (cases B, P) yields **two** offenses — the
   `permission_bypass` (never-downgrade, critical) and a separate `out_of_scope`
   boundary on `/` (downgradable).
-- The `--rules` flag is required for `scope_dirs` (case L) and any custom
-  sensitive/escalation patterns to take effect in the report.
+- `scope_dirs` (case L) and any custom sensitive/escalation patterns take effect
+  only when a rules file is loaded — an auto-discovered `pd-rules.yaml` (cwd / project
+  root / `~/.claude`) or an explicit `--rules`. These cases use `--rules` because the
+  sandbox rules file sits at a custom path auto-discovery wouldn't find.
 - Allow-rules are read from the event `cwd`'s `.claude/settings.json` (and
   `CLAUDE_CONFIG_DIR`/`~/.claude`), not from `--rules`.
 - Never-downgrade-pattern evidence is width-truncated in the table; use `-v` for the

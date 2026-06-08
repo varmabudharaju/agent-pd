@@ -10,7 +10,7 @@ quoted evidence. **Catch-and-report — it never blocks.**
 
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB.svg?logo=python&logoColor=white)](pyproject.toml)
-[![Tests](https://img.shields.io/badge/tests-438_passing-brightgreen.svg)](docs/manual-tests/)
+[![Tests](https://img.shields.io/badge/tests-461_passing-brightgreen.svg)](docs/manual-tests/)
 [![Version](https://img.shields.io/badge/version-0.1.0-orange.svg)](pyproject.toml)
 [![Runtime deps](https://img.shields.io/badge/runtime_deps-PyYAML_only-lightgrey.svg)](pyproject.toml)
 
@@ -307,11 +307,29 @@ Prioritized, none blocking — scoped so any one can be picked up independently:
 
 ## Configuration
 
-Detectors and the sink are configured via `pd-rules.yaml` (deep-merged over defaults — see the
-file for keys: `scope_dirs`, sensitive paths, `off_task` threshold, and a `sink` section). The
-off-host sink also reads env overrides: `PD_SINK_TYPE=file|http`, `PD_SINK_PATH` / `PD_SINK_URL`,
-`PD_SINK_TIMEOUT`, and the **env-only** `PD_SINK_TOKEN` (ignored if placed in a config file, so it
-never lands in a checked-in or world-readable file).
+agent-pd works out of the box with no config — every rule (sensitive paths, escalation
+patterns, severities, the `off_task` threshold) ships as a built-in default. A `pd-rules.yaml`
+file is **optional**, and only needed to override those defaults.
+
+When you do write one, every command **auto-discovers** it — no flag required. On each run `pd`
+looks for `pd-rules.yaml` in this order and uses the first it finds, deep-merged over the
+built-in defaults:
+
+1. the current directory
+2. the enclosing **project root** (the git root above the cwd)
+3. `~/.claude/pd-rules.yaml` (a global default for all projects)
+
+Precedence is **`--rules <path>` › auto-discovered file › built-in defaults** — pass `--rules`
+on any command (including `pd watch`) to point at a specific file and override discovery. See
+`pd-rules.yaml` in this repo for every supported key (`scope_dirs`, sensitive paths, the two
+escalation tiers, severities, `off_task_overlap_threshold`, `storage`, and a `sink` section).
+
+> Lists in `pd-rules.yaml` **replace** the corresponding default list (deep-merge replaces
+> lists, not appends) — so if you set `sensitive_patterns`, include the built-ins you still want.
+
+The off-host sink also reads env overrides: `PD_SINK_TYPE=file|http`, `PD_SINK_PATH` /
+`PD_SINK_URL`, `PD_SINK_TIMEOUT`, and the **env-only** `PD_SINK_TOKEN` (ignored if placed in a
+config file, so it never lands in a checked-in or world-readable file).
 
 ## Storage & privacy
 
@@ -335,16 +353,19 @@ pd install-hook --audit-dir ~/agent-pd-logs   # hook + CLI both use this path
 ```
 
 Both the hook (writes) and every `pd` command (reads) honor `PD_AUDIT_DIR` (precedence:
-`--audit-dir` flag › `PD_AUDIT_DIR` › default). **Don't** point it at a repo folder or a
-cloud-synced directory (iCloud/Dropbox) unless you accept that plaintext tool inputs — possibly
-secrets — will be committed or synced off-machine.
+`--audit-dir` flag › `PD_AUDIT_DIR` › default). A **relative** path is resolved to an absolute
+one when it's set (the install flag bakes the absolute path; `PD_AUDIT_DIR` is absolutized when
+read), so logs always land in one fixed place instead of scattering into whatever directory each
+agent happens to run in. Still, **don't** point it at a repo folder or a cloud-synced directory
+(iCloud/Dropbox) unless you accept that plaintext tool inputs — possibly secrets — will be
+committed or synced off-machine.
 
 ## Development
 
 ```bash
 pip install --user -e .          # core
 pip install --user -e ".[judge]" # + anthropic SDK (only for the API judge backend)
-python3 -m pytest -q             # 438 tests, pure (no API key needed)
+python3 -m pytest -q             # 461 tests, pure (no API key needed)
 ```
 
 TDD throughout; detectors, render, live, and judge are all unit-tested with no network. For the

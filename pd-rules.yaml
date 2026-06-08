@@ -1,4 +1,10 @@
 # pd-rules.yaml — agent-pd rules. All keys optional; omitted keys use built-in defaults.
+#
+# This file is OPTIONAL. pd works with built-in defaults when it is absent. When present, it is
+# auto-discovered (no --rules flag needed): pd searches the cwd, then the project root (git root),
+# then ~/.claude/pd-rules.yaml, and uses the first it finds. Precedence: --rules <path> >
+# auto-discovered file > built-in defaults. NOTE: a list you set here REPLACES the default list
+# (deep-merge replaces lists), so include the built-ins you still want.
 scope_dirs: []                       # e.g. ["src/", "tests/"]; empty disables the allowlist check
 project_boundary: true               # flag any file/Bash path outside the project (git root or cwd)
 sensitive_patterns:                  # always flagged (critical) even inside the project

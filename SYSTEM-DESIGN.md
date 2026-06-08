@@ -109,11 +109,11 @@ phases are decoupled by the log on disk:
 | `store.py` | Transparent reads over `.jsonl` + `.jsonl.gz`, gzip compaction, prune, dedup across the compaction window. |
 | `investigator.py` | `gather()` — replay the log through `LiveMonitor` into `AgentRecord`s; attach each agent's brief from `meta.json`. |
 | `live.py` | `LiveMonitor` (the shared correlation engine) + `watch()` (tail + live feed). |
-| `detectors/` | The six detectors (`permission_bypass`, `out_of_scope`, `self_permission`, `tool_scope`, `redundant`, `off_task`) + the registry/runner. |
+| `detectors/` | The six detectors (`permission_bypass`, `out_of_scope`, `self_permission`, `tool_scope` — offense name `tool_not_allowed`, `redundant`, `off_task`) + the registry/runner. |
 | `scope.py` | Path extraction from Bash (incl. interpreter one-liners, single-level `$VAR`, sensitive basenames) and classification (in-project / boundary / sensitive). |
 | `permissions.py` | Load `permissions.allow` from the settings files and match it with faithful Claude Code semantics. |
 | `agents_def.py` | Parse a subagent's declared `tools:` allowlist from `.claude/agents/<type>.md`. |
-| `config.py` | Rules + the default sensitive set; deep-merge `pd-rules.yaml`. |
+| `config.py` | Rules + the default sensitive set; auto-discovers and deep-merges `pd-rules.yaml` (cwd / project root / `~/.claude`; `--rules` overrides). |
 | `models.py` | `Action`, `AgentRecord`, `Offense` dataclasses. |
 | `report.py` / `render.py` / `summary.py` | Forensic markdown/JSON; live-feed formatting; labels/digests. |
 | `judge.py` | Opt-in LLM pass to confirm `off_task` flags (API or `claude` CLI backend). |
