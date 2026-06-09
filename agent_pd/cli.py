@@ -101,7 +101,7 @@ def _cmd_watch(args) -> int:
     rules = load_rules_auto(args.rules)
     return watch(session=args.session, crimes_only=args.crimes_only, verbose=args.verbose,
                  all_sessions=args.all_sessions, style=style, rules=rules,
-                 audit_dir=args.audit_dir, projects_dir=args.projects_dir)
+                 audit_dir=args.audit_dir, projects_dir=args.projects_dir, replay=args.replay)
 
 
 def _cmd_compact(args) -> int:
@@ -296,6 +296,9 @@ def build_parser() -> argparse.ArgumentParser:
     w.add_argument("--all", dest="all_sessions", action="store_true",
                    help="merge the live feed across ALL sessions (tags each line with §session)")
     w.add_argument("--crimes-only", action="store_true", help="hide clean actions")
+    w.add_argument("--replay", action="store_true",
+                   help="replay the whole session's backlog first (default: stream only "
+                        "new activity from now, like tail -f)")
     w.add_argument("-v", "--verbose", action="store_true",
                    help="show full commands and full offense reasons (no truncation)")
     w.add_argument("--no-color", action="store_true", help="disable ANSI color")

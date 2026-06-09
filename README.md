@@ -157,7 +157,9 @@ pd report --session <id> --format md  # md | json | both
 pd report --verbose                   # full evidence + files-touched per agent
 pd report --agent <id|main>           # focus one agent: digest + every action it took
 
-pd watch                              # live feed, one session (most recent)
+pd watch                              # live feed, most recent session — streams NEW activity
+                                      #   from now (like tail -f); existing backlog is skipped
+pd watch --replay                     # replay the whole session's backlog first, then tail
 pd watch --all                        # merged feed across ALL sessions (§session tag)
 pd watch --crimes-only                # quiet unless something's wrong
 pd watch --verbose                    # full commands + reasons, no truncation

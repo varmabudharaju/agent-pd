@@ -129,12 +129,21 @@ def _resolve_session_file(audit_dir, session_id):
     return plain if plain.exists() else gz
 
 
-def tail_events(audit_dir, session_id=None, poll_interval=0.5, _max_polls=None):
+def tail_events(audit_dir, session_id=None, poll_interval=0.5, _max_polls=None,
+                from_now=False):
     """Follow the session audit file, yielding parsed event dicts as lines are appended.
     Tolerant of the file not existing yet and of blank/partial lines. `_max_polls`
-    bounds the loop for tests."""
+    bounds the loop for tests.
+
+    from_now=True starts at the current END of the log (like `tail -f -n0`), so only
+    events appended after watch starts are streamed — the existing backlog is skipped."""
     path = _resolve_session_file(audit_dir, session_id)
     offset, buf, polls = 0, "", 0
+    if from_now and path is not None and not str(path).endswith(".gz"):
+        try:
+            offset = Path(path).stat().st_size   # skip everything already in the file
+        except OSError:
+            offset = 0
     while True:
         if path is None or not Path(path).exists():
             path = _resolve_session_file(audit_dir, session_id)
@@ -160,12 +169,21 @@ def tail_events(audit_dir, session_id=None, poll_interval=0.5, _max_polls=None):
             time.sleep(poll_interval)
 
 
-def tail_all_events(audit_dir, poll_interval=0.5, _max_polls=None):
+def tail_all_events(audit_dir, poll_interval=0.5, _max_polls=None, from_now=False):
     """Follow EVERY session audit file in the dir at once, merging appended events into
     one stream. New session files are picked up automatically. Each event carries its
-    own session_id/agent_id, so a single LiveMonitor handles the merged feed."""
+    own session_id/agent_id, so a single LiveMonitor handles the merged feed.
+
+    from_now=True primes each existing file's offset to its current end, so only newly
+    appended events stream; session files created later naturally start from their first line."""
     audit_dir = Path(audit_dir)
     offsets, bufs, polls = {}, {}, 0
+    if from_now and audit_dir.exists():
+        for path in audit_dir.glob("*.jsonl"):
+            try:
+                offsets[str(path)] = path.stat().st_size
+            except OSError:
+                pass
     while True:
         if audit_dir.exists():
             for path in sorted(audit_dir.glob("*.jsonl")):
@@ -196,7 +214,7 @@ def tail_all_events(audit_dir, poll_interval=0.5, _max_polls=None):
 
 def watch(session=None, crimes_only=False, verbose=False, all_sessions=False, style=None,
           audit_dir=DEFAULT_AUDIT_DIR, projects_dir=DEFAULT_PROJECTS_DIR,
-          rules=None, out=print, _events=None) -> int:
+          rules=None, out=print, _events=None, replay=False) -> int:
     style = style if style is not None else Style()
     rules = rules if rules is not None else load_rules(None)
     mon = LiveMonitor(projects_dir=projects_dir, audit_dir=audit_dir)
@@ -212,15 +230,19 @@ def watch(session=None, crimes_only=False, verbose=False, all_sessions=False, st
             return 0
         session = resolved
 
+    # Default to streaming only NEW activity (like `tail -f -n0`); --replay plays the
+    # existing backlog first. from_now is the inverse of replay.
+    from_now = not replay
     where = "ALL sessions" if all_sessions else f"session {session or '(most recent)'}"
-    out(f" agent-pd · watching {where}  ·  {audit_dir}    [Ctrl-C to stop]")
+    mode = "full session" if replay else "new activity only"
+    out(f" agent-pd · watching {where} · {mode} · {audit_dir}    [Ctrl-C to stop]")
     out("─" * 80)
     if _events is not None:
         events = _events
     elif all_sessions:
-        events = tail_all_events(audit_dir)
+        events = tail_all_events(audit_dir, from_now=from_now)
     else:
-        events = tail_events(audit_dir, session)
+        events = tail_events(audit_dir, session, from_now=from_now)
     try:
         for ev in events:
             res = mon.process(ev, rules)

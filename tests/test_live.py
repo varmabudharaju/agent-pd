@@ -148,6 +148,17 @@ def test_tail_events_reads_compacted_gz(tmp_path):
     assert events == [{"i": 1}, {"i": 2}]
 
 
+def test_tail_from_now_skips_backlog(tmp_path):
+    # Default watch behavior: from_now=True starts at the end of the log, skipping the
+    # existing backlog; replay (from_now=False) yields it.
+    audit = tmp_path / "a"; audit.mkdir()
+    (audit / "S.jsonl").write_text(json.dumps({"event": "old"}) + "\n")
+    skipped = list(tail_events(audit, "S", poll_interval=0, _max_polls=1, from_now=True))
+    assert skipped == []
+    replayed = list(tail_events(audit, "S", poll_interval=0, _max_polls=1, from_now=False))
+    assert len(replayed) == 1 and replayed[0]["event"] == "old"
+
+
 def test_watch_reports_no_sessions(tmp_path):
     # A stale PD_AUDIT_DIR (or wrong --audit-dir) must not silently show an empty feed;
     # watch should say so and name the dir it looked in.
