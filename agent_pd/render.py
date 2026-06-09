@@ -15,7 +15,10 @@ _SEV_ORDER = {"critical": 0, "high": 1, "low": 2, "review": 3, "info": 4}
 # stable palette for per-agent coloring (cyan, green, yellow, magenta, blue, bright variants)
 _AGENT_PALETTE = ["36", "32", "33", "35", "34", "31", "96", "92", "93", "95"]
 
-_ABBREV = {"general-purpose": "gp"}
+# Show the real agent_type (no abbreviation) so the feed reads clearly. The tag is
+# padded to this width in the feed so the tool/command columns line up.
+_ABBREV = {}
+_TAG_W = 22
 
 
 class Style:
@@ -106,23 +109,40 @@ def _worst(offenses) -> str:
     return min((o.severity for o in offenses), key=lambda s: _SEV_ORDER.get(s, 9))
 
 
+def _offense_names(offenses) -> str:
+    """De-duped offense names in first-seen order — what crime(s) this action committed."""
+    seen, names = set(), []
+    for o in offenses:
+        if o.offense not in seen:
+            seen.add(o.offense)
+            names.append(o.offense)
+    return " ".join(names)
+
+
 def format_feed_line(ts, agent_type, agent_id, tool_name, tool_input, offenses,
                      style: Style, crimes_only: bool = False, verbose: bool = False,
-                     session: str = None) -> list:
+                     session: str = None, width: int = 100) -> list:
     if crimes_only and not any(o.severity != "info" for o in offenses):
         return []   # nothing flagged, or only permitted (info) items — stay quiet
-    tag = _painted_tag(agent_type, agent_id, style)
+    plain_tag = agent_tag(agent_type, agent_id)
+    tag = style.paint(plain_tag.ljust(_TAG_W), agent_color(agent_id))   # pad so columns align
     sess = f"{style.paint('§' + session[:7], '2;37')} " if session else ""
-    summary = action_summary(tool_name, tool_input, limit=400 if verbose else 48)
+    sess_w = (len(session[:7]) + 2) if session else 0
+    # Scale the command column to the terminal instead of a fixed 48, so wide terminals
+    # aren't wasted and long commands aren't needlessly clipped.
+    summary_limit = 400 if verbose else max(32, width - 58 - sess_w - _TAG_W)
+    summary = action_summary(tool_name, tool_input, limit=summary_limit)
     if offenses:
-        verdict = badge(_worst(offenses), style)
+        # severity badge + the offense name(s) so the crime is named on the line itself
+        verdict = badge(_worst(offenses), style) + "  " + style.paint(_offense_names(offenses), "2;37")
     else:
         verdict = style.paint("✓" if style.emoji else "ok", "2;37")
-    pad = "" if verbose else f"{'':<{max(0, 48 - len(summary))}}"
+    pad = "" if verbose else f"{'':<{max(0, summary_limit - len(summary))}}"
     main = f" {_fmt_ts(ts)}  {sess}{tag}  {tool_name:<8} {summary}{pad}  {verdict}"
     lines = [main]
+    ev_limit = max(40, width - 13)   # "          └ " prefix is ~12 chars
     for o in offenses:
-        reason = o.evidence if (verbose or len(o.evidence) <= 90) else o.evidence[:89] + "…"
+        reason = o.evidence if (verbose or len(o.evidence) <= ev_limit) else o.evidence[:ev_limit - 1] + "…"
         lines.append(style.paint(f"          └ {reason}", "2;37"))
     return lines
 

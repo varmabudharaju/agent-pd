@@ -6,6 +6,7 @@ file-following `tail_events` iterator, and a thin `watch` orchestrator that rend
 AgentRecord and emitting each offense once."""
 import gzip
 import json
+import shutil
 import time
 from collections import Counter
 from dataclasses import dataclass
@@ -233,10 +234,11 @@ def watch(session=None, crimes_only=False, verbose=False, all_sessions=False, st
     # Default to streaming only NEW activity (like `tail -f -n0`); --replay plays the
     # existing backlog first. from_now is the inverse of replay.
     from_now = not replay
+    term_w = shutil.get_terminal_size((100, 24)).columns   # use the full terminal width
     where = "ALL sessions" if all_sessions else f"session {session or '(most recent)'}"
     mode = "full session" if replay else "new activity only"
     out(f" agent-pd · watching {where} · {mode} · {audit_dir}    [Ctrl-C to stop]")
-    out("─" * 80)
+    out("─" * term_w)
     if _events is not None:
         events = _events
     elif all_sessions:
@@ -253,11 +255,11 @@ def watch(session=None, crimes_only=False, verbose=False, all_sessions=False, st
                 for ln in format_feed_line(res.ts, res.agent_type, res.agent_id,
                                            res.tool_name, res.tool_input,
                                            res.new_offenses, style, crimes_only, verbose,
-                                           session=sess):
+                                           session=sess, width=term_w):
                     out(ln)
     except KeyboardInterrupt:
         pass
-    out("─" * 80)
+    out("─" * term_w)
     total_crimes = sum(n for c in mon.tallies.values() for s, n in c.items() if s != "info")
     if crimes_only and total_crimes == 0 and mon.total_acts:
         out(" no crimes — here's what each agent did instead "

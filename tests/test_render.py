@@ -47,9 +47,19 @@ def test_style_paint_respects_color_flag():
     assert painted != "x" and "x" in painted and "\033[" in painted
 
 
-def test_agent_tag_abbreviates_and_shortens_id():
-    assert agent_tag("general-purpose", "a55d42971949c8763") == "gp·a55d"
+def test_agent_tag_uses_full_type_and_shortens_id():
+    # full agent_type (clearer than an abbreviation), short id prefix
+    assert agent_tag("general-purpose", "a55d42971949c8763") == "general-purpose·a55d"
     assert agent_tag("Explore", "a93ccd5b9f98f6b64") == "Explore·a93c"
+
+
+def test_feed_line_names_the_offense():
+    from agent_pd.models import Offense
+    off = Offense("a1", "Explore", "out_of_scope", "high", "high",
+                  "Bash touched /var/log (outside project)")
+    lines = format_feed_line("12:00:00", "Explore", "a1", "Bash",
+                             {"command": "ls /var/log"}, [off], Style(color=False, emoji=False))
+    assert "out_of_scope" in lines[0]   # the crime is named on the action line itself
 
 
 def test_format_banner_shows_brief():
