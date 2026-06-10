@@ -36,12 +36,12 @@ def test_watch_rereads_allow_rules_midsession(tmp_path, monkeypatch):
     ev = _ev("a1", "Read", {"file_path": str(proj / "x.py")}, agent_type="main")
     ev["cwd"] = str(proj)
     mon.process(dict(ev), RULES)
-    assert mon.records["a1"].allow_rules == []          # no rules yet
+    assert mon.records[("s1", "a1")].allow_rules == []          # no rules yet
     # grant a permission mid-session
     (proj / ".claude" / "settings.local.json").write_text(
         '{"permissions": {"allow": ["Read(~/secrets/*)"]}}')
     mon.process(dict(ev), RULES)
-    assert "Read(~/secrets/*)" in mon.records["a1"].allow_rules
+    assert "Read(~/secrets/*)" in mon.records[("s1", "a1")].allow_rules
 
 
 def test_denial_flagged_as_permission_bypass(tmp_path):
@@ -66,7 +66,7 @@ def test_tallies_and_total_acts(tmp_path):
     mon.process(_ev("a1", "Bash", {"command": "sudo rm"}), RULES)   # critical
     mon.process(_ev("a1", "Grep", {"pattern": "x"}), RULES)         # clean
     assert mon.total_acts == 2
-    assert mon.tallies["a1"]["critical"] == 1
+    assert mon.tallies[("s1", "a1")]["critical"] == 1
 
 
 def test_subagent_start_registers_without_action(tmp_path):
@@ -111,6 +111,68 @@ def test_watch_all_tags_lines_with_session(tmp_path):
     blob = "\n".join(out_lines)
     assert "ALL sessions" in blob          # header
     assert "§abc1234" in blob              # session marker on banner/feed line
+
+
+def test_all_sessions_keep_agent_records_separate(tmp_path):
+    # In the merged --all feed the main agent's id is "" in EVERY session. Records must
+    # be keyed per (session, agent) — otherwise session B's main agent inherits session
+    # A's cwd/project-root and its perfectly in-project reads get flagged out_of_scope.
+    mon = _mon(tmp_path)
+    a = _ev("", "Read", {"file_path": "/proj-a/src/main.py"}, session="sess-a")
+    a["cwd"] = "/proj-a"
+    b = _ev("", "Read", {"file_path": "/proj-b/src/other.py"}, session="sess-b")
+    b["cwd"] = "/proj-b"
+    mon.process(a, RULES)
+    res = mon.process(b, RULES)
+    assert not any(o.offense == "out_of_scope" for o in res.new_offenses)
+    assert len(mon.records) == 2              # one record per (session, agent)
+
+
+def test_rap_sheet_tags_sessions_when_multiple(tmp_path):
+    mon = _mon(tmp_path)
+    mon.process(_ev("", "Read", {"file_path": "/a/x.py"}, session="sess-a"), RULES)
+    mon.process(_ev("", "Read", {"file_path": "/b/y.py"}, session="sess-b"), RULES)
+    sheet = mon.rap_sheet(Style(color=False, emoji=False))
+    assert "§sess-a" in sheet and "§sess-b" in sheet
+
+
+def test_watch_header_names_session_identity(tmp_path):
+    # The header must say WHAT the watched session is (project + first prompt), not
+    # just its UUID — that's how the user tells sessions apart.
+    audit = tmp_path / "a"; audit.mkdir()
+    transcript = tmp_path / "t.jsonl"
+    transcript.write_text(json.dumps(
+        {"type": "user", "message": {"role": "user",
+                                     "content": "test this whole repo and features"}}) + "\n")
+    (audit / "s1.jsonl").write_text(json.dumps(
+        {"event": "PostToolUse", "session_id": "s1", "cwd": "/Users/x/mongosemantic",
+         "transcript_path": str(transcript)}) + "\n")
+    out_lines = []
+    watch(session="s1", style=Style(color=False, emoji=False),
+          projects_dir=tmp_path / "p", audit_dir=audit, rules=RULES,
+          out=out_lines.append, _events=iter([]))
+    header = out_lines[0]
+    assert "s1" in header
+    assert "/Users/x/mongosemantic" in header
+    assert "test this whole repo and features" in header
+
+
+def test_watch_all_prints_session_intro_once(tmp_path):
+    # In the merged --all feed, the first event of each session prints one intro line
+    # identifying it (project dir), so interleaved sessions stay tellable-apart.
+    audit = tmp_path / "a"; audit.mkdir()
+    (audit / "abc1234def.jsonl").write_text(json.dumps(
+        {"event": "PostToolUse", "session_id": "abc1234def",
+         "cwd": "/Users/x/mongosemantic"}) + "\n")
+    evs = [_ev("a1", "Grep", {"pattern": "x"}, session="abc1234def"),
+           _ev("a1", "Grep", {"pattern": "y"}, session="abc1234def")]
+    out_lines = []
+    watch(all_sessions=True, style=Style(color=False, emoji=False),
+          projects_dir=tmp_path / "p", audit_dir=audit, rules=RULES,
+          out=out_lines.append, _events=iter(evs))
+    intros = [l for l in out_lines if "/Users/x/mongosemantic" in l]
+    assert len(intros) == 1                       # once per session, not per event
+    assert "§abc1234" in intros[0]
 
 
 def test_watch_emits_banner_crime_and_rap_sheet(tmp_path):

@@ -60,6 +60,93 @@ def iter_events(session_id, audit_dir):
             yield ev
 
 
+# Harness-generated transcript entries that must never become a session title.
+_NOISE_PREFIXES = ("<local-command", "<command-", "<task-notification",
+                   "<system-reminder", "Caveat:")
+
+
+def _iter_session_lines(session_id, audit_dir):
+    """Yield raw lines of a session log lazily — plain file first, else the gz."""
+    audit_dir = Path(audit_dir)
+    plain = audit_dir / f"{session_id}.jsonl"
+    gz = audit_dir / f"{session_id}.jsonl.gz"
+    try:
+        if plain.exists():
+            with open(plain, encoding="utf-8") as f:
+                yield from f
+        elif gz.exists():
+            with gzip.open(gz, "rt", encoding="utf-8") as f:
+                yield from f
+    except OSError:
+        return
+
+
+def _first_user_prompt(transcript_path, limit=60):
+    """First real user prompt from a Claude Code transcript, as a one-line title.
+    Skips harness noise (local-command echoes, caveats, task notifications, meta
+    entries, tool results). Returns "" when the transcript is missing/unreadable."""
+    if not transcript_path or not Path(transcript_path).exists():
+        return ""
+    try:
+        with open(transcript_path, encoding="utf-8") as f:
+            for line in f:
+                try:
+                    d = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if d.get("type") != "user" or d.get("isMeta"):
+                    continue
+                content = (d.get("message") or {}).get("content")
+                if isinstance(content, str):
+                    text = content
+                elif isinstance(content, list):
+                    text = " ".join(b.get("text", "") for b in content
+                                    if isinstance(b, dict) and b.get("type") == "text")
+                else:
+                    continue
+                text = " ".join(text.split())
+                if not text or text.startswith(_NOISE_PREFIXES):
+                    continue
+                return text if len(text) <= limit else text[: limit - 1] + "…"
+    except OSError:
+        return ""
+    return ""
+
+
+def session_identity(session_id, audit_dir):
+    """Human identity for a session, derived at read time from data already on disk:
+    project = first event's cwd, title = first real user prompt (read from the
+    transcript_path the events record), last_active = audit-file mtime. Every field
+    degrades to ""/None when its source is missing — never raises. No new log fields,
+    so this works retroactively for every existing session."""
+    audit_dir = Path(audit_dir)
+    sid = session_id or ""
+    project, transcript = "", ""
+    for line in _iter_session_lines(sid, audit_dir):
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            ev = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        project = project or ev.get("cwd", "")
+        transcript = transcript or ev.get("transcript_path", "")
+        if project and transcript:
+            break
+    last_active = None
+    for name in (f"{sid}.jsonl", f"{sid}.jsonl.gz"):
+        p = audit_dir / name
+        if p.exists():
+            try:
+                last_active = p.stat().st_mtime
+            except OSError:
+                pass
+            break
+    return {"project": project, "title": _first_user_prompt(transcript),
+            "last_active": last_active}
+
+
 def _session_files(audit_dir):
     audit_dir = Path(audit_dir)
     if not audit_dir.exists():

@@ -23,6 +23,7 @@ from .investigator import (
 )
 from .render import (
     Style, format_banner, format_feed_line, format_rap_sheet, agent_tag, agent_color,
+    session_identity_bits, format_session_intro,
 )
 
 
@@ -43,9 +44,13 @@ class LiveMonitor:
     def __init__(self, projects_dir=DEFAULT_PROJECTS_DIR, audit_dir=DEFAULT_AUDIT_DIR):
         self.projects_dir = Path(projects_dir)
         self.audit_dir = Path(audit_dir)
-        self.records = {}        # agent_id -> AgentRecord (accumulating)
-        self.emitted = {}        # agent_id -> set of (offense, evidence) already shown
-        self.tallies = {}        # agent_id -> Counter(severity)
+        # Keyed by (session_id, agent_id), NOT agent_id alone: the main agent's id is ""
+        # in EVERY session, so in the merged --all feed a bare-aid key would fuse all
+        # mains into one record — session B would inherit session A's cwd/project-root
+        # and its in-project work would be falsely flagged out_of_scope.
+        self.records = {}        # (session_id, agent_id) -> AgentRecord (accumulating)
+        self.emitted = {}        # (session_id, agent_id) -> set of (offense, evidence) shown
+        self.tallies = {}        # (session_id, agent_id) -> Counter(severity)
         self.total_acts = 0
 
     def _load_brief(self, event) -> str:
@@ -61,17 +66,18 @@ class LiveMonitor:
     def process(self, event, rules) -> ProcessResult:
         aid = event.get("agent_id", "")
         atype = event.get("agent_type", "")
+        key = (event.get("session_id", ""), aid)
         new_agent = False
-        if aid not in self.records:
+        if key not in self.records:
             brief = self._load_brief(event)
-            self.records[aid] = AgentRecord(agent_id=aid, agent_type=atype, brief=brief,
+            self.records[key] = AgentRecord(agent_id=aid, agent_type=atype, brief=brief,
                                             cwd=event.get("cwd", ""), actions=[],
                                             allow_rules=load_allow_rules(event.get("cwd", "")),
                                             tool_allowlist=load_agent_tools(atype, event.get("cwd", "")))
-            self.emitted[aid] = set()
-            self.tallies[aid] = Counter()
+            self.emitted[key] = set()
+            self.tallies[key] = Counter()
             new_agent = True
-        rec = self.records[aid]
+        rec = self.records[key]
         if atype and not rec.agent_type:
             rec.agent_type = atype
 
@@ -95,22 +101,28 @@ class LiveMonitor:
 
         new = []
         for o in run_detectors(rec, rules):
-            key = (o.offense, o.evidence)
-            if key not in self.emitted[aid]:
-                self.emitted[aid].add(key)
-                self.tallies[aid][o.severity] += 1
+            okey = (o.offense, o.evidence)
+            if okey not in self.emitted[key]:
+                self.emitted[key].add(okey)
+                self.tallies[key][o.severity] += 1
                 new.append(o)
         return ProcessResult(new_agent, aid, rec.agent_type, rec.brief,
                              True, tool, action.tool_input, action.ts, new)
 
     def rap_sheet(self, style) -> str:
         entries = []
-        for aid, rec in self.records.items():
+        # Prefix tags with §session when more than one session is in the feed (--all),
+        # so two same-typed agents from different sessions stay distinguishable.
+        multi = len({sid for sid, _ in self.records}) > 1
+        for (sid, aid), rec in self.records.items():
             tools = Counter(a.tool_name for a in rec.actions if a.tool_name)
+            tag = agent_tag(rec.agent_type, aid)
+            if multi:
+                tag = f"§{sid[:7]} {tag}"
             entries.append({
-                "tag": agent_tag(rec.agent_type, aid),
+                "tag": tag,
                 "color": agent_color(aid),
-                "crimes": dict(self.tallies.get(aid, {})),
+                "crimes": dict(self.tallies.get((sid, aid), {})),
                 "acts": len(rec.actions),
                 "tools": dict(tools),
             })
@@ -235,7 +247,16 @@ def watch(session=None, crimes_only=False, verbose=False, all_sessions=False, st
     # existing backlog first. from_now is the inverse of replay.
     from_now = not replay
     term_w = shutil.get_terminal_size((100, 24)).columns   # use the full terminal width
-    where = "ALL sessions" if all_sessions else f"session {session or '(most recent)'}"
+    if all_sessions:
+        where = "ALL sessions"
+    else:
+        # Name WHAT the session is (project + first prompt), not just its UUID — with
+        # several sessions on one machine the UUID alone tells the user nothing.
+        where = f"session {session or '(most recent)'}"
+        if session:
+            ident = store.session_identity(session, audit_dir)
+            where = " · ".join([where] + session_identity_bits(ident["project"],
+                                                               ident["title"]))
     mode = "full session" if replay else "new activity only"
     out(f" agent-pd · watching {where} · {mode} · {audit_dir}    [Ctrl-C to stop]")
     out("─" * term_w)
@@ -245,10 +266,18 @@ def watch(session=None, crimes_only=False, verbose=False, all_sessions=False, st
         events = tail_all_events(audit_dir, from_now=from_now)
     else:
         events = tail_events(audit_dir, session, from_now=from_now)
+    seen_sessions = set()
     try:
         for ev in events:
             res = mon.process(ev, rules)
             sess = ev.get("session_id") if all_sessions else None
+            if sess and sess not in seen_sessions:
+                # First sighting of a session in the merged feed: say what it is, so
+                # interleaved sessions stay tellable-apart.
+                seen_sessions.add(sess)
+                ident = store.session_identity(sess, audit_dir)
+                if ident["project"] or ident["title"]:
+                    out(format_session_intro(sess, ident["project"], ident["title"], style))
             if res.new_agent:
                 out(format_banner(res.agent_type, res.agent_id, res.brief, style, session=sess))
             if res.has_action:

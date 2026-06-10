@@ -263,3 +263,75 @@ def test_prune_sessions_noop_when_none(tmp_path):
     (audit / "s.jsonl.gz").write_bytes(gzip.compress(b'{"i":1}\n'))
     assert store.prune_sessions(audit) == 0
     assert (audit / "s.jsonl.gz").exists()
+
+
+# ---- session_identity ----
+
+def _write_transcript(path, entries):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(json.dumps(e) for e in entries) + "\n")
+
+
+def _user(text, **kw):
+    return {"type": "user", "message": {"role": "user", "content": text}, **kw}
+
+
+def test_session_identity_project_and_title(tmp_path):
+    transcript = tmp_path / "projects" / "-proj" / "s1.jsonl"
+    _write_transcript(transcript, [
+        _user("<local-command-stdout>Set model</local-command-stdout>"),  # harness noise
+        _user("Caveat: messages below were generated while running local commands"),
+        _user("ignored meta", isMeta=True),
+        {"type": "assistant", "message": {"role": "assistant", "content": "hi"}},
+        _user("test this whole repo and features"),                       # the real prompt
+    ])
+    _write_jsonl(tmp_path / "s1.jsonl", [
+        {"event": "PostToolUse", "session_id": "s1", "cwd": "/proj",
+         "transcript_path": str(transcript)}])
+    ident = store.session_identity("s1", tmp_path)
+    assert ident["project"] == "/proj"
+    assert ident["title"] == "test this whole repo and features"
+    assert ident["last_active"] is not None
+
+
+def test_session_identity_title_from_content_blocks_truncated(tmp_path):
+    long = "fix the thing " * 20
+    transcript = tmp_path / "t.jsonl"
+    _write_transcript(transcript, [
+        _user([{"type": "tool_result", "content": "ignored"}]),           # no text -> skipped
+        _user([{"type": "text", "text": long}]),
+    ])
+    _write_jsonl(tmp_path / "s1.jsonl", [
+        {"cwd": "/proj", "transcript_path": str(transcript)}])
+    title = store.session_identity("s1", tmp_path)["title"]
+    assert title.endswith("…") and len(title) == 60
+    assert "\n" not in title
+
+
+def test_session_identity_missing_transcript(tmp_path):
+    _write_jsonl(tmp_path / "s1.jsonl", [
+        {"cwd": "/proj", "transcript_path": str(tmp_path / "nope.jsonl")}])
+    ident = store.session_identity("s1", tmp_path)
+    assert ident["project"] == "/proj"
+    assert ident["title"] == ""
+
+
+def test_session_identity_from_gz(tmp_path):
+    _write_jsonl_gz(tmp_path / "s1.jsonl.gz", [{"cwd": "/proj"}])
+    ident = store.session_identity("s1", tmp_path)
+    assert ident["project"] == "/proj"
+    assert ident["last_active"] is not None
+
+
+def test_session_identity_missing_session_degrades(tmp_path):
+    ident = store.session_identity("nope", tmp_path)
+    assert ident == {"project": "", "title": "", "last_active": None}
+    # None / empty session id must not raise either
+    assert store.session_identity("", tmp_path)["project"] == ""
+
+
+def test_session_identity_skips_events_without_cwd(tmp_path):
+    _write_jsonl(tmp_path / "s1.jsonl", [
+        {"event": "SubagentStop", "session_id": "s1"},      # no cwd
+        {"event": "PostToolUse", "session_id": "s1", "cwd": "/proj"}])
+    assert store.session_identity("s1", tmp_path)["project"] == "/proj"

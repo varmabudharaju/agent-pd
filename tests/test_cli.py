@@ -81,6 +81,25 @@ def test_list_shows_session(tmp_path, capsys):
     assert "s1" in capsys.readouterr().out
 
 
+def test_list_shows_identity_columns(tmp_path, capsys):
+    # Each row identifies the session: id, project dir, and the first user prompt.
+    projects = tmp_path / "projects"; projects.mkdir()
+    audit = tmp_path / "audit"; audit.mkdir()
+    transcript = tmp_path / "t.jsonl"
+    transcript.write_text(json.dumps(
+        {"type": "user", "message": {"role": "user",
+                                     "content": "test this whole repo"}}) + "\n")
+    (audit / "s1.jsonl").write_text(json.dumps(
+        {"event": "PostToolUse", "session_id": "s1", "cwd": "/Users/x/mongosemantic",
+         "transcript_path": str(transcript)}) + "\n")
+    rc = main(["list", "--projects-dir", str(projects), "--audit-dir", str(audit)])
+    assert rc == 0
+    out = capsys.readouterr().out
+    row = [l for l in out.splitlines() if l.startswith("s1")][0]
+    assert "/Users/x/mongosemantic" in row
+    assert "test this whole repo" in row
+
+
 import gzip
 
 

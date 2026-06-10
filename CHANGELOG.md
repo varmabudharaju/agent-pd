@@ -7,7 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_Nothing yet._
+### Added
+- **Session identity everywhere** — sessions are no longer bare UUIDs. Identity is
+  derived at read time from data already in the logs (first event's `cwd` +
+  `transcript_path`), so it works retroactively for every existing session:
+  - `pd list` is now a table: session id · project dir · last activity · “first
+    user prompt”.
+  - The `pd watch` header names the watched session's project and first prompt.
+  - `pd watch --all` prints a `§sid · project · “title”` intro line the first time
+    each session appears in the merged feed.
+- **Multi-session fleet demo** (`examples/demo-sessions.sh`) — three sessions across
+  three projects with subagents and briefs, fed through the real recorder; the
+  source of every README screenshot.
+
+### Fixed
+- **`pd watch --all` no longer fuses agents across sessions.** Live records were
+  keyed by agent id alone, and the main agent's id is `""` in every session — so in
+  the merged feed every session's main agent shared one record and inherited the
+  FIRST session's project root, flagging other sessions' in-project work as
+  `out_of_scope`. Records are now keyed per (session, agent); the rap sheet tags
+  entries with `§session` when more than one session is in the feed.
 
 ## [0.1.0] — 2026-06-08
 

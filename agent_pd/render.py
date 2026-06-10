@@ -1,6 +1,8 @@
 """Pure formatting for the live `pd watch` feed. No I/O — every function returns
 strings so it is fully unit-testable without a terminal."""
 import json
+import os
+from pathlib import Path
 
 # severity -> (label, emoji, ansi-color-code)
 SEVERITY_STYLE = {
@@ -94,6 +96,31 @@ def format_banner(agent_type: str, agent_id: str, brief: str, style: Style,
         lines.append(f'│   brief: "{brief}"')
     lines.append("└─")
     return "\n".join(lines)
+
+
+def home_rel(path: str) -> str:
+    """Display a path home-relative (~/proj) so session lines stay short."""
+    home = str(Path.home())
+    if path and (path == home or path.startswith(home + os.sep)):
+        return "~" + path[len(home):]
+    return path
+
+
+def session_identity_bits(project: str, title: str) -> list:
+    """The displayable identity segments for a session — project then “title” —
+    skipping whatever is unknown. Shared by the watch header, --all intros and list."""
+    bits = []
+    if project:
+        bits.append(home_rel(project))
+    if title:
+        bits.append(f"“{title}”")
+    return bits
+
+
+def format_session_intro(session_id: str, project: str, title: str, style: Style) -> str:
+    """One line introducing a session the first time it appears in the --all feed."""
+    sess = style.paint("§" + (session_id or "")[:7], "2;37")
+    return " " + " · ".join([sess] + session_identity_bits(project, title))
 
 
 def _fmt_ts(ts) -> str:

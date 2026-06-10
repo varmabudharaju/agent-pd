@@ -32,13 +32,25 @@ def _cmd_report(args) -> int:
 
 
 def _cmd_list(args) -> int:
+    import time
+    from .render import home_rel
     audit = Path(args.audit_dir)
     sessions = set()
     sessions |= set(store.list_sessions(audit))
     for sub in Path(args.projects_dir).glob("*/*/subagents"):
         sessions.add(sub.parent.name)
-    for s in sorted(sessions):
-        print(s)
+    # One row per session with its identity (project, last activity, first prompt),
+    # oldest first so the most recent session ends up next to the prompt.
+    rows = [(store.session_identity(sid, audit), sid) for sid in sessions]
+    rows.sort(key=lambda r: (r[0]["last_active"] or 0, r[1]))
+    sid_w = max((len(sid) for _, sid in rows), default=0)
+    proj_w = max((len(home_rel(i["project"])) for i, _ in rows), default=0)
+    for ident, sid in rows:
+        when = (time.strftime("%b %d %H:%M", time.localtime(ident["last_active"]))
+                if ident["last_active"] else "")
+        title = f"“{ident['title']}”" if ident["title"] else ""
+        print(f"{sid:<{sid_w}}  {home_rel(ident['project']):<{proj_w}}  "
+              f"{when:<12}  {title}".rstrip())
     return 0
 
 

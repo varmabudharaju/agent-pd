@@ -188,7 +188,7 @@ def test_gather_record_carries_tool_result_onto_action():
         "tool_result": {"stdout": "ok"},
     })
     mon.process(event, load_rules(None))
-    action = mon.records["a1"].actions[0]
+    action = mon.records[("s1", "a1")].actions[0]
     assert action.tool_result == {"stdout": "ok"}
 
 
