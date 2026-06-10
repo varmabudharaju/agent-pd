@@ -10,7 +10,7 @@ quoted evidence. **Catch-and-report — it never blocks.**
 
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://github.com/varmabudharaju/agent-pd/blob/master/LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB.svg?logo=python&logoColor=white)](https://github.com/varmabudharaju/agent-pd/blob/master/pyproject.toml)
-[![Tests](https://img.shields.io/badge/tests-461_passing-brightgreen.svg)](https://github.com/varmabudharaju/agent-pd/tree/master/docs/manual-tests/)
+[![Tests](https://img.shields.io/badge/tests-474_passing-brightgreen.svg)](https://github.com/varmabudharaju/agent-pd/tree/master/docs/manual-tests/)
 [![Version](https://img.shields.io/badge/version-0.1.0-orange.svg)](https://github.com/varmabudharaju/agent-pd/blob/master/pyproject.toml)
 [![Runtime deps](https://img.shields.io/badge/runtime_deps-PyYAML_only-lightgrey.svg)](https://github.com/varmabudharaju/agent-pd/blob/master/pyproject.toml)
 
@@ -31,7 +31,18 @@ quoted evidence. **Catch-and-report — it never blocks.**
 - 🎯 **Six deterministic detectors** at **zero token cost** — denied calls, out-of-scope &amp;
   credential access, permission bypass, self-permissioning, disallowed tools, off-task work.
 - 🔒 **Tamper-evident audit log** (hash-chained) with an optional **off-host append-only sink**.
+- 🪪 **Sessions are named, not UUIDs** — `pd list` and `pd watch` show each session's project
+  directory and first user prompt, derived from data already in the logs (works retroactively).
 - 🙂 **Honest by design** — it raises the bar; it is **not** a sandbox. See [SECURITY.md](https://github.com/varmabudharaju/agent-pd/blob/master/SECURITY.md).
+
+**What it looks like** — `pd watch --all` across three concurrent sessions (three projects,
+main agents + subagents with their briefs, two genuine flags among the ordinary work):
+
+<img src="https://raw.githubusercontent.com/varmabudharaju/agent-pd/master/docs/screenshots/demo/03-pd-watch-all.png" width="100%" alt="pd watch --all: merged live feed across three sessions — § intro line per session, agent banners with briefs, two genuine flags (a credentials read and a denied curl|sh)"/>
+
+> Every screenshot in this README is a real Terminal capture of the real engine replaying a
+> seeded three-session fleet — reproduce them yourself with
+> [`examples/demo-sessions.sh`](https://github.com/varmabudharaju/agent-pd/blob/master/examples/demo-sessions.sh).
 
 ---
 
@@ -89,10 +100,16 @@ Then just use Claude Code as normal. The hook records in the background.
 ## Quickstart
 
 ```bash
-pd list                  # every session with recorded activity
+pd list                  # every session: id, project dir, last active, first prompt
 pd report                # offense report for the most recent session
 pd watch                 # live "police scanner" feed as agents work
 ```
+
+Sessions are identified by **what they are**, not just their UUID — each `pd list` row shows
+the project directory, last activity, and the session's first user prompt as a title (derived
+at read time from the audit log + transcript, so it works for existing sessions too):
+
+<img src="https://raw.githubusercontent.com/varmabudharaju/agent-pd/master/docs/screenshots/demo/01-pd-list.png" width="100%" alt="pd list: three sessions, each identified by project directory, last activity and its first user prompt"/>
 
 ---
 
@@ -141,6 +158,21 @@ outside the project — plus a subagent (`Researcher`) using `Bash`, a tool outs
 declared read-only allowlist. That's five of the six detectors firing on one synthetic
 session. See [`examples/demo.sh`](https://github.com/varmabudharaju/agent-pd/blob/master/examples/demo.sh) for the exact events.
 
+There is also a **multi-session, multi-agent fleet demo** — three sessions across three
+projects (a checkout feature, a flaky-CI investigation, a blog draft), each with subagents and
+briefs, fed through the same real recorder. It's what every screenshot in this README shows:
+
+```bash
+bash examples/demo-sessions.sh
+export PD_AUDIT_DIR=/tmp/pd-demo-fleet/audit
+pd list  --projects-dir /tmp/pd-demo-fleet/projects
+pd watch --all --replay --projects-dir /tmp/pd-demo-fleet/projects
+```
+
+`pd report` on the fleet's flaky-CI session — per-agent digest, offense table, quoted evidence:
+
+<img src="https://raw.githubusercontent.com/varmabudharaju/agent-pd/master/docs/screenshots/demo/04-pd-report.png" width="100%" alt="pd report for the orders-api session: per-agent digest and offense table with quoted evidence"/>
+
 > **Want to verify it on your own real Claude Code session?** Follow the safe ~15-minute
 > hands-on walkthrough in [`docs/manual-tests/TRY-IT-LIVE.md`](https://github.com/varmabudharaju/agent-pd/blob/master/docs/manual-tests/TRY-IT-LIVE.md).
 
@@ -150,7 +182,7 @@ session. See [`examples/demo.sh`](https://github.com/varmabudharaju/agent-pd/blo
 
 ```bash
 pd install-hook                       # register the logging hook (one-time)
-pd list                               # every recorded session
+pd list                               # every session: id · project · last active · “first prompt”
 
 pd report                             # offense report, most recent session
 pd report --session <id> --format md  # md | json | both
@@ -160,7 +192,8 @@ pd report --agent <id|main>           # focus one agent: digest + every action i
 pd watch                              # live feed, most recent session — streams NEW activity
                                       #   from now (like tail -f); existing backlog is skipped
 pd watch --replay                     # replay the whole session's backlog first, then tail
-pd watch --all                        # merged feed across ALL sessions (§session tag)
+pd watch --all                        # merged feed across ALL sessions (§session tag; an intro
+                                      #   line names each session's project + first prompt)
 pd watch --crimes-only                # quiet unless something's wrong
 pd watch --verbose                    # full commands + reasons, no truncation
 pd watch --session <id> --no-color --no-emoji   # plain terminals / SSH
@@ -229,21 +262,20 @@ drops the noisy `off_task` flags. Built to cost almost nothing:
 
 ## Live view: `pd watch`
 
-A real-time feed of what your agents are doing and which rules they're breaking. Each agent gets
-a stable color and a banner with its assigned brief; every action is a feed line with a severity
-badge; a live rap-sheet footer tallies crimes per agent.
+A real-time feed of what your agents are doing and which rules they're breaking. The header
+**names the session it attached to** — project directory plus the session's first prompt — so
+attaching to the default (most recent) session is never a mystery:
 
-```
-┌ ▸ Explore · a93c  started
-│   brief: "find all callers of authenticate()"
-└─
- 12:01:03  Explore·a93c   Grep     "authenticate\("            ✓
- 12:01:06  gp·a55d        Bash     sudo rm -rf /tmp/cache      🚨 CRITICAL  permission_bypass
-                                    └ escalation pattern 'sudo ' in command
- RAP SHEET   Explore·a93c: clean   ·   gp·a55d: 1🚨   ·   total 1 crimes / 2 acts
-```
+<img src="https://raw.githubusercontent.com/varmabudharaju/agent-pd/master/docs/screenshots/demo/02-pd-watch-header.png" width="100%" alt="pd watch header naming the watched session: its project directory and first prompt, not just the UUID"/>
 
-Zero extra dependencies — ANSI only. Ctrl-C prints a final rap sheet.
+Each agent gets a stable color and a banner with its assigned brief; every action is a feed
+line with a severity badge; a live rap-sheet footer tallies crimes per agent. With `--all`
+(merged feed across every session) the first time a session appears it prints a
+`§sid · project · “title”` intro line, so interleaved sessions stay tellable-apart — see the
+fleet screenshot at the top of this README.
+
+Zero extra dependencies — ANSI only. Ctrl-C prints a final rap sheet. The full annotated
+screenshot set lives in [docs/test-evidence.md](https://github.com/varmabudharaju/agent-pd/blob/master/docs/test-evidence.md).
 
 ---
 
@@ -252,7 +284,9 @@ Zero extra dependencies — ANSI only. Ctrl-C prints a final rap sheet.
 Every event carries a `seq` and a `chain = sha256(prev_chain + canonical(event))` (HMAC-SHA256
 if `PD_AUDIT_KEY` is set), computed by the hook under a per-session file lock with a
 `<sid>.head.json` anchor. **`pd verify`** recomputes the chain and reports `✓ intact`,
-`✗ TAMPER DETECTED`, or `✗ TRUNCATED` (exit 2), and holds across `pd compact`.
+`✗ TAMPER DETECTED`, or `✗ TRUNCATED` (exit 2), and holds across `pd compact`:
+
+<img src="https://raw.githubusercontent.com/varmabudharaju/agent-pd/master/docs/screenshots/demo/05-pd-verify.png" width="100%" alt="pd verify --all: hash-chain integrity check across all three demo sessions"/>
 
 This is tamper-**evident**, not tamper-**proof**: a same-user agent with Bash can re-chain the
 whole file. To close the *retroactive-deletion* half of that gap, **`pd sink push`** forwards each
@@ -370,7 +404,7 @@ committed or synced off-machine.
 ```bash
 pip install --user -e .          # core
 pip install --user -e ".[judge]" # + anthropic SDK (only for the API judge backend)
-python3 -m pytest -q             # 461 tests, pure (no API key needed)
+python3 -m pytest -q             # 474 tests, pure (no API key needed)
 ```
 
 TDD throughout; detectors, render, live, and judge are all unit-tested with no network. For the

@@ -1,0 +1,49 @@
+output:
+  dir: docs/screenshots
+  version: demo
+
+# README screenshots: a realistic multi-session, multi-agent fleet seeded through
+# the REAL recorder by examples/demo-sessions.sh (3 sessions, 3 projects, subagents
+# with briefs, two genuine flags). Shot 1 seeds the fleet; later shots reuse it.
+# Each window is sized to its output. Fully reproducible: `capture run`.
+
+shots:
+  - name: pd-list
+    kind: cli
+    command: "bash examples/demo-sessions.sh >/dev/null; PD_AUDIT_DIR=/tmp/pd-demo-fleet/audit pd list --projects-dir /tmp/pd-demo-fleet/projects"
+    cwd: /Users/varma/agent-pd
+    cols: 150
+    rows: 10
+    alt: "pd list: three sessions, each identified by project directory, last activity and its first user prompt"
+
+  - name: pd-watch-header
+    kind: cli
+    command: "PD_AUDIT_DIR=/tmp/pd-demo-fleet/audit pd watch & sleep 4; kill %1 2>/dev/null"
+    cwd: /Users/varma/agent-pd
+    cols: 150
+    rows: 10
+    alt: "pd watch header naming the watched session: its project directory and first prompt, not just the UUID"
+
+  - name: pd-watch-all
+    kind: cli
+    command: "PD_AUDIT_DIR=/tmp/pd-demo-fleet/audit pd watch --all --replay --projects-dir /tmp/pd-demo-fleet/projects & sleep 6; kill %1 2>/dev/null"
+    cwd: /Users/varma/agent-pd
+    cols: 150
+    rows: 50
+    alt: "pd watch --all: merged live feed across three sessions — § intro line per session, agent banners with briefs, two genuine flags (a credentials read and a denied curl|sh)"
+
+  - name: pd-report
+    kind: cli
+    command: "PD_AUDIT_DIR=/tmp/pd-demo-fleet/audit pd report --session c91d4e07-66f2-4a31-b8c5-2f90ae51d6b4 --projects-dir /tmp/pd-demo-fleet/projects --format md"
+    cwd: /Users/varma/agent-pd
+    cols: 150
+    rows: 18
+    alt: "pd report for the orders-api session: per-agent digest and offense table with quoted evidence"
+
+  - name: pd-verify
+    kind: cli
+    command: "PD_AUDIT_DIR=/tmp/pd-demo-fleet/audit pd verify --all"
+    cwd: /Users/varma/agent-pd
+    cols: 150
+    rows: 8
+    alt: "pd verify --all: hash-chain integrity check across all three demo sessions"
