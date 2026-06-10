@@ -36,9 +36,10 @@ quoted evidence. **Catch-and-report — it never blocks.**
 - 🙂 **Honest by design** — it raises the bar; it is **not** a sandbox. See [SECURITY.md](https://github.com/varmabudharaju/agent-pd/blob/master/SECURITY.md).
 
 **What it looks like** — `pd watch --all` across three concurrent sessions (three projects,
-main agents + subagents with their briefs, two genuine flags among the ordinary work):
+main agents + subagents with their briefs, two genuine flags and one borderline search among
+the ordinary work):
 
-<img src="https://raw.githubusercontent.com/varmabudharaju/agent-pd/master/docs/screenshots/demo/03-pd-watch-all.png" width="100%" alt="pd watch --all: merged live feed across three sessions — § intro line per session, agent banners with briefs, two genuine flags (a credentials read and a denied curl|sh)"/>
+<img src="https://raw.githubusercontent.com/varmabudharaju/agent-pd/master/docs/screenshots/demo/03-pd-watch-all.png" width="100%" alt="pd watch --all: merged live feed across three sessions — § intro line per session, agent banners with briefs, two genuine flags (a credentials read and a denied curl|sh) and one off_task review"/>
 
 > Every screenshot in this README is a real Terminal capture of the real engine replaying a
 > seeded three-session fleet — reproduce them yourself with
@@ -258,6 +259,12 @@ drops the noisy `off_task` flags. Built to cost almost nothing:
   subscription, no API key**), or the metered Anthropic API (`pip install -e ".[judge]"` +
   `ANTHROPIC_API_KEY`). `--model haiku|sonnet|opus` (default haiku), `--max N`.
 
+In the demo fleet, the orders-api subagent rabbit-holed into a CI-infra search with zero
+word-overlap against its brief — the heuristic flags it for review, and the dry run prices
+out exactly what confirming it would cost:
+
+<img src="https://raw.githubusercontent.com/varmabudharaju/agent-pd/master/docs/screenshots/demo/07-pd-judge.png" width="100%" alt="pd judge dry run: the off_task heuristic flagged one borderline search; judging it would cost one batched haiku call — nothing runs without --run"/>
+
 ---
 
 ## Live view: `pd watch`
@@ -274,7 +281,12 @@ line with a severity badge; a live rap-sheet footer tallies crimes per agent. Wi
 `§sid · project · “title”` intro line, so interleaved sessions stay tellable-apart — see the
 fleet screenshot at the top of this README.
 
-Zero extra dependencies — ANSI only. Ctrl-C prints a final rap sheet. The full annotated
+`--crimes-only` keeps the feed quiet unless something is actually wrong — only flagged actions
+stream — and Ctrl-C prints a final **rap sheet** tallying every agent in every session:
+
+<img src="https://raw.githubusercontent.com/varmabudharaju/agent-pd/master/docs/screenshots/demo/06-pd-watch-crimes.png" width="100%" alt="pd watch --all --crimes-only: quiet unless something is wrong — only the flagged actions stream, and Ctrl-C prints the final rap sheet tallying every agent in every session"/>
+
+Zero extra dependencies — ANSI only. The full annotated
 screenshot set lives in [docs/test-evidence.md](https://github.com/varmabudharaju/agent-pd/blob/master/docs/test-evidence.md).
 
 ---
@@ -284,16 +296,20 @@ screenshot set lives in [docs/test-evidence.md](https://github.com/varmabudharaj
 Every event carries a `seq` and a `chain = sha256(prev_chain + canonical(event))` (HMAC-SHA256
 if `PD_AUDIT_KEY` is set), computed by the hook under a per-session file lock with a
 `<sid>.head.json` anchor. **`pd verify`** recomputes the chain and reports `✓ intact`,
-`✗ TAMPER DETECTED`, or `✗ TRUNCATED` (exit 2), and holds across `pd compact`:
+`✗ TAMPER DETECTED`, or `✗ TRUNCATED` (exit 2), and holds across `pd compact`. Here's it
+catching both attacks for real — one event deleted from a log's tail, then one byte flipped
+inside a recorded command (the compacted session still verifies):
 
-<img src="https://raw.githubusercontent.com/varmabudharaju/agent-pd/master/docs/screenshots/demo/05-pd-verify.png" width="100%" alt="pd verify --all: hash-chain integrity check across all three demo sessions"/>
+<img src="https://raw.githubusercontent.com/varmabudharaju/agent-pd/master/docs/screenshots/demo/12-verify-tamper.png" width="100%" alt="pd verify pinpoints both attacks: the truncated session is flagged TRUNCATED, and one flipped byte is flagged TAMPER DETECTED at seq 7, while the compacted session still verifies"/>
 
 This is tamper-**evident**, not tamper-**proof**: a same-user agent with Bash can re-chain the
 whole file. To close the *retroactive-deletion* half of that gap, **`pd sink push`** forwards each
 chained event to an **off-host, append-only destination** (file or http backend; env-only
 `PD_SINK_TOKEN`; `https://` enforced for remote tokens; redirects not followed). Once an event has
 shipped off-host, a later local rewrite can't reach it. **`pd sink status`** flags "remote ahead"
-when more events shipped than remain locally — a truncation signal.
+when more events shipped than remain locally — a truncation signal:
+
+<img src="https://raw.githubusercontent.com/varmabudharaju/agent-pd/master/docs/screenshots/demo/10-sink-remote-ahead.png" width="100%" alt="pd sink: push all chained events to the off-host sink, status shows fully forwarded; after deleting one local event, status flags remote ahead — possible local tampering"/>
 
 > Append-only is a **deployment requirement** pd can't enforce, and the sink does not stop a
 > same-user agent from *forging* entries or *disabling* the hook. Read [SECURITY.md](https://github.com/varmabudharaju/agent-pd/blob/master/SECURITY.md)

@@ -29,15 +29,15 @@ shots:
     command: "PD_AUDIT_DIR=/tmp/pd-demo-fleet/audit pd watch --all --replay --projects-dir /tmp/pd-demo-fleet/projects & sleep 6; kill %1 2>/dev/null"
     cwd: /Users/varma/agent-pd
     cols: 150
-    rows: 50
-    alt: "pd watch --all: merged live feed across three sessions — § intro line per session, agent banners with briefs, two genuine flags (a credentials read and a denied curl|sh)"
+    rows: 52
+    alt: "pd watch --all: merged live feed across three sessions — § intro line per session, agent banners with briefs, two genuine flags (a credentials read and a denied curl|sh) and one off_task review"
 
   - name: pd-report
     kind: cli
     command: "PD_AUDIT_DIR=/tmp/pd-demo-fleet/audit pd report --session c91d4e07-66f2-4a31-b8c5-2f90ae51d6b4 --projects-dir /tmp/pd-demo-fleet/projects --format md"
     cwd: /Users/varma/agent-pd
     cols: 150
-    rows: 18
+    rows: 22
     alt: "pd report for the orders-api session: per-agent digest and offense table with quoted evidence"
 
   - name: pd-verify
@@ -47,3 +47,59 @@ shots:
     cols: 150
     rows: 8
     alt: "pd verify --all: hash-chain integrity check across all three demo sessions"
+
+  - name: pd-watch-crimes
+    kind: cli
+    command: "PD_AUDIT_DIR=/tmp/pd-demo-fleet/audit pd watch --all --replay --crimes-only --projects-dir /tmp/pd-demo-fleet/projects & sleep 6; kill -INT %1 2>/dev/null; sleep 1"
+    cwd: /Users/varma/agent-pd
+    cols: 150
+    rows: 40
+    alt: "pd watch --all --crimes-only: quiet unless something is wrong — only the flagged actions stream, and Ctrl-C prints the final rap sheet tallying every agent in every session"
+
+  - name: pd-judge
+    kind: cli
+    command: "PD_AUDIT_DIR=/tmp/pd-demo-fleet/audit pd judge --session c91d4e07-66f2-4a31-b8c5-2f90ae51d6b4 --projects-dir /tmp/pd-demo-fleet/projects"
+    cwd: /Users/varma/agent-pd
+    cols: 150
+    rows: 8
+    alt: "pd judge dry run: the off_task heuristic flagged one borderline search; judging it would cost one batched haiku call (~262 input tokens) — nothing runs without --run"
+
+  # Off-host sink story in one persistent window: push -> up to date -> delete a
+  # local event -> status flags the discrepancy ("remote ahead").
+  - name: sink-story
+    kind: session
+    cwd: /Users/varma/agent-pd
+    cols: 150
+    rows: 24
+    clear_between: false
+    steps:
+      - name: sink-push
+        command: "export PD_AUDIT_DIR=/tmp/pd-demo-fleet/audit PD_SINK_TYPE=file PD_SINK_PATH=/tmp/pd-demo-fleet/sink-mirror.jsonl; pd sink push --all"
+        alt: "pd sink push --all: forward every chained event to the off-host append-only sink"
+        wait_ms: 2500
+      - name: sink-status
+        command: "pd sink status --all"
+        alt: "pd sink status: all three sessions fully forwarded"
+        wait_ms: 2500
+      - name: sink-remote-ahead
+        command: "sed -i '' '$d' $PD_AUDIT_DIR/f47ac10b-58cc-4372-a567-0e02b2c3d479.jsonl; pd sink status --session f47ac10b-58cc-4372-a567-0e02b2c3d479"
+        alt: "delete one local event after it shipped: pd sink status flags 'remote ahead — possible local tampering'"
+        wait_ms: 2500
+
+  # Integrity story in one persistent window: compact (lossless) -> verify catches
+  # the truncation made above -> flip one byte -> verify catches the tamper.
+  - name: integrity-story
+    kind: session
+    cwd: /Users/varma/agent-pd
+    cols: 150
+    rows: 18
+    clear_between: false
+    steps:
+      - name: verify-compact
+        command: "PD_AUDIT_DIR=/tmp/pd-demo-fleet/audit pd compact --session a3b8e2d4-1c97-4f5e-9a02-7d64c1f08b3a; PD_AUDIT_DIR=/tmp/pd-demo-fleet/audit pd verify --all"
+        alt: "pd verify --all after compaction: the gzipped session still verifies; the event deleted in the sink demo is caught as TRUNCATED"
+        wait_ms: 2500
+      - name: verify-tamper
+        command: "sed -i '' 's/credentials/credentia1s/' /tmp/pd-demo-fleet/audit/c91d4e07-66f2-4a31-b8c5-2f90ae51d6b4.jsonl; PD_AUDIT_DIR=/tmp/pd-demo-fleet/audit pd verify --session c91d4e07-66f2-4a31-b8c5-2f90ae51d6b4"
+        alt: "flip one byte in a recorded event: pd verify pinpoints the break — TAMPER DETECTED at seq 7"
+        wait_ms: 2500
