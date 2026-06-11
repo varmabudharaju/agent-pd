@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-06-11
+
 ### Added
 - **Session identity everywhere** — sessions are no longer bare UUIDs. Identity is
   derived at read time from data already in the logs (first event's `cwd` +
@@ -57,5 +59,6 @@ deterministic detectors and reports rule offenses with quoted evidence. Catch-an
   `--rules` overrides); configurable audit-log location via `--audit-dir` / `PD_AUDIT_DIR`
   (always resolved to an absolute path).
 
-[Unreleased]: https://github.com/varmabudharaju/agent-pd/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/varmabudharaju/agent-pd/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/varmabudharaju/agent-pd/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/varmabudharaju/agent-pd/releases/tag/v0.1.0

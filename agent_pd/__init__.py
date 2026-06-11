@@ -9,6 +9,6 @@ from importlib.metadata import PackageNotFoundError, version
 try:
     __version__ = version("agent-pd")
 except PackageNotFoundError:        # running from a source tree with no install metadata
-    __version__ = "0.1.0"
+    __version__ = "0.2.0"
 
 __all__ = ["__version__"]

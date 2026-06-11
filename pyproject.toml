@@ -1,6 +1,6 @@
 [project]
 name = "agent-pd"
-version = "0.1.0"
+version = "0.2.0"
 description = "A police department for your Claude Code agents — a logging hook + CLI that audits what the main agent and its subagents actually did."
 readme = "README.md"
 requires-python = ">=3.11"
