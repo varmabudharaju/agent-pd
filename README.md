@@ -11,10 +11,22 @@ quoted evidence. **Catch-and-report — it never blocks.**
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://github.com/varmabudharaju/agent-pd/blob/master/LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB.svg?logo=python&logoColor=white)](https://github.com/varmabudharaju/agent-pd/blob/master/pyproject.toml)
 [![Tests](https://img.shields.io/badge/tests-474_passing-brightgreen.svg)](https://github.com/varmabudharaju/agent-pd/tree/master/docs/manual-tests/)
-[![Version](https://img.shields.io/badge/version-0.1.0-orange.svg)](https://github.com/varmabudharaju/agent-pd/blob/master/pyproject.toml)
+[![Version](https://img.shields.io/badge/version-0.2.0-orange.svg)](https://github.com/varmabudharaju/agent-pd/blob/master/pyproject.toml)
 [![Runtime deps](https://img.shields.io/badge/runtime_deps-PyYAML_only-lightgrey.svg)](https://github.com/varmabudharaju/agent-pd/blob/master/pyproject.toml)
 
 **[Quickstart](#quickstart)** · **[How it works](#how-it-works-mental-model)** · **[Detectors](#the-detectors)** · **[Architecture](https://github.com/varmabudharaju/agent-pd/blob/master/ARCHITECTURE.md)** · **[Security](https://github.com/varmabudharaju/agent-pd/blob/master/SECURITY.md)**
+
+</div>
+
+## 🎬 Caught on camera
+
+> The department's body-cam. agent-pd won't stop the heist — but every move your agents make ends up on the record.
+
+<div align="center">
+
+<video src="https://github.com/varmabudharaju/agent-pd/raw/master/docs/demo.mp4" controls muted playsinline width="80%"></video>
+
+<sub><i>Not playing inline? <a href="https://github.com/varmabudharaju/agent-pd/raw/master/docs/demo.mp4">▶ Watch the clip</a>.</i></sub>
 
 </div>
 
