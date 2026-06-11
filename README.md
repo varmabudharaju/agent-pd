@@ -24,9 +24,9 @@ quoted evidence. **Catch-and-report — it never blocks.**
 
 <div align="center">
 
-<video src="https://github.com/varmabudharaju/agent-pd/raw/master/docs/demo.mp4" controls muted playsinline width="80%"></video>
+<a href="https://github.com/varmabudharaju/agent-pd/raw/master/docs/demo.mp4"><img src="https://raw.githubusercontent.com/varmabudharaju/agent-pd/master/docs/demo.gif" width="80%" alt="agent-pd demo — the police scanner catching agents in the act"></a>
 
-<sub><i>Not playing inline? <a href="https://github.com/varmabudharaju/agent-pd/raw/master/docs/demo.mp4">▶ Watch the clip</a>.</i></sub>
+<sub><i>▶ <a href="https://github.com/varmabudharaju/agent-pd/raw/master/docs/demo.mp4">Watch the full clip with sound</a></i></sub>
 
 </div>
 
