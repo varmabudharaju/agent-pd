@@ -11,7 +11,7 @@ bash examples/demo-sessions.sh && capture run
 ```
 
 Spec for the session-identity feature:
-[2026-06-09-session-identity-design.md](superpowers/specs/2026-06-09-session-identity-design.md).
+[2026-06-09-session-identity-design.md](specs/2026-06-09-session-identity-design.md).
 
 ## `pd list` — every session identified
 
