@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🚔 agent-pd
+# agent-pd
 
 ### A police department for your Claude Code agents
 
@@ -18,7 +18,7 @@ quoted evidence. **Catch-and-report — it never blocks.**
 
 </div>
 
-## 🎬 Caught on camera
+## Caught on camera
 
 > The department's body-cam. agent-pd won't stop the heist — but every move your agents make ends up on the record.
 
@@ -38,14 +38,14 @@ quoted evidence. **Catch-and-report — it never blocks.**
 
 **Highlights**
 
-- 🛰️ **Covers the main agent + every subagent**, including those spawned by Claude Code's new
+- **Covers the main agent + every subagent**, including those spawned by Claude Code's new
   dynamic **Workflow** tool (verified against recorded `workflow-subagent` hook events).
-- 🎯 **Six deterministic detectors** at **zero token cost** — denied calls, out-of-scope &amp;
+- **Six deterministic detectors** at **zero token cost** — denied calls, out-of-scope &amp;
   credential access, permission bypass, self-permissioning, disallowed tools, off-task work.
-- 🔒 **Tamper-evident audit log** (hash-chained) with an optional **off-host append-only sink**.
-- 🪪 **Sessions are named, not UUIDs** — `pd list` and `pd watch` show each session's project
+- **Tamper-evident audit log** (hash-chained) with an optional **off-host append-only sink**.
+- **Sessions are named, not UUIDs** — `pd list` and `pd watch` show each session's project
   directory and first user prompt, derived from data already in the logs (works retroactively).
-- 🙂 **Honest by design** — it raises the bar; it is **not** a sandbox. See [SECURITY.md](https://github.com/varmabudharaju/agent-pd/blob/master/SECURITY.md).
+- **Honest by design** — it raises the bar; it is **not** a sandbox. See [SECURITY.md](https://github.com/varmabudharaju/agent-pd/blob/master/SECURITY.md).
 
 **What it looks like** — `pd watch --all` across three concurrent sessions (three projects,
 main agents + subagents with their briefs, two genuine flags and one borderline search among
